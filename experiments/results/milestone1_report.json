@@ -1,0 +1,937 @@
+{
+  "config": {
+    "world_seed": 7,
+    "history_days": 1825,
+    "history_seed": 99,
+    "horizon_days": 365,
+    "n_seeds": 20,
+    "mrv_seeds": 16,
+    "budget_lakh": 600.0,
+    "top_k": 8,
+    "out_dir": "experiments/results",
+    "quick": false
+  },
+  "runtime_s": 61.0,
+  "history": {
+    "availability": {
+      "FighterH": 0.601,
+      "HeloU": 0.6712
+    },
+    "spells": 3605,
+    "repairs": 2688,
+    "snags": 2688
+  },
+  "satya": {
+    "issues": {},
+    "min_dq": 1.0
+  },
+  "dhanvantari": {
+    "agency_q": {
+      "BRD-1": {
+        "estimate": [
+          0.305,
+          0.215,
+          0.413
+        ],
+        "truth": 0.25
+      },
+      "HAL-K": {
+        "estimate": [
+          0.122,
+          0.068,
+          0.21
+        ],
+        "truth": 0.15
+      },
+      "MSME-P": {
+        "estimate": [
+          0.524,
+          0.413,
+          0.633
+        ],
+        "truth": 0.6
+      },
+      "OEM-FR": {
+        "estimate": [
+          0.155,
+          0.053,
+          0.377
+        ],
+        "truth": 0.05
+      },
+      "OEM-RU": {
+        "estimate": [
+          0.137,
+          0.066,
+          0.264
+        ],
+        "truth": 0.05
+      }
+    },
+    "env_effects": {
+      "environmental|desert_dust": {
+        "estimate": [
+          0.71,
+          0.654,
+          0.771
+        ],
+        "truth_eta_multiplier": 0.55
+      },
+      "drivetrain|coastal_saline": {
+        "estimate": [
+          0.616,
+          0.557,
+          0.68
+        ],
+        "truth_eta_multiplier": 0.45
+      },
+      "rotor|high_altitude": {
+        "estimate": [
+          0.729,
+          0.681,
+          0.782
+        ],
+        "truth_eta_multiplier": 0.6
+      },
+      "hydraulics|humid_ne": {
+        "estimate": [
+          0.752,
+          0.643,
+          0.879
+        ],
+        "truth_eta_multiplier": 0.75
+      },
+      "fuel_system|desert_dust": {
+        "estimate": [
+          0.902,
+          0.845,
+          0.963
+        ],
+        "truth_eta_multiplier": 0.8
+      }
+    },
+    "frailty_k": 11.3
+  },
+  "sushruta": {
+    "scorecards": [
+      {
+        "agency": "HAL-K",
+        "jobs": 591,
+        "q_hat": 0.122,
+        "q_lo": 0.068,
+        "q_hi": 0.21,
+        "tat_median_days": 51.5,
+        "tat_p90_days": 80.9,
+        "send_to_done_median_days": 54.5
+      },
+      {
+        "agency": "OEM-RU",
+        "jobs": 525,
+        "q_hat": 0.137,
+        "q_lo": 0.066,
+        "q_hi": 0.264,
+        "tat_median_days": 77.2,
+        "tat_p90_days": 146.6,
+        "send_to_done_median_days": 109.8
+      },
+      {
+        "agency": "OEM-FR",
+        "jobs": 189,
+        "q_hat": 0.155,
+        "q_lo": 0.053,
+        "q_hi": 0.377,
+        "tat_median_days": 69.9,
+        "tat_p90_days": 99.1,
+        "send_to_done_median_days": 81.3
+      },
+      {
+        "agency": "BRD-1",
+        "jobs": 747,
+        "q_hat": 0.305,
+        "q_lo": 0.215,
+        "q_hi": 0.413,
+        "tat_median_days": 37.5,
+        "tat_p90_days": 62.1,
+        "send_to_done_median_days": 40.5
+      },
+      {
+        "agency": "MSME-P",
+        "jobs": 636,
+        "q_hat": 0.524,
+        "q_lo": 0.413,
+        "q_hi": 0.633,
+        "tat_median_days": 17.7,
+        "tat_p90_days": 28.7,
+        "send_to_done_median_days": 20.8
+      }
+    ],
+    "rogues": {
+      "flagged": 16,
+      "true_positives": 14,
+      "precision": 0.88,
+      "recall": 0.44
+    }
+  },
+  "drishti": {
+    "planted": [
+      [
+        "drivetrain",
+        "coastal_saline",
+        "corrosion"
+      ],
+      [
+        "environmental",
+        "desert_dust",
+        "erosion"
+      ],
+      [
+        "hydraulics",
+        "humid_ne",
+        "corrosion"
+      ],
+      [
+        "rotor",
+        "high_altitude",
+        "wear"
+      ]
+    ],
+    "signals": [
+      [
+        "hydraulics",
+        "humid_ne",
+        "corrosion"
+      ]
+    ],
+    "candidates": [
+      [
+        "drivetrain",
+        "coastal_saline",
+        "corrosion"
+      ],
+      [
+        "drivetrain",
+        "high_altitude",
+        "crack"
+      ],
+      [
+        "hydraulics",
+        "coastal_saline",
+        "pressure_low"
+      ],
+      [
+        "hydraulics",
+        "humid_ne",
+        "corrosion"
+      ],
+      [
+        "rotor",
+        "coastal_saline",
+        "leak"
+      ],
+      [
+        "rotor",
+        "high_altitude",
+        "wear"
+      ]
+    ],
+    "planted_found_as_signal": 1,
+    "planted_found_as_candidate": 3,
+    "false_signals": 0
+  },
+  "portfolios": {
+    "status_quo": [
+      "PROVISION 1x FH-AC-04 @ B1 (day 0)",
+      "PROVISION 1x FH-BR-09 @ B1 (day 0)",
+      "PROVISION 1x FH-FP-01 @ B1 (day 0)",
+      "PROVISION 1x FH-GN-07 @ B1 (day 0)",
+      "PROVISION 5x FH-HP-03 @ B1 (day 0)",
+      "PROVISION 2x FH-MF-06 @ B1 (day 0)",
+      "PROVISION 1x FH-OP-02 @ B1 (day 0)",
+      "PROVISION 1x FH-RD-05 @ B1 (day 0)",
+      "PROVISION 0x HU-DA-07 @ B1 (day 0)",
+      "PROVISION 2x HU-GB-02 @ B1 (day 0)",
+      "PROVISION 0x HU-HP-04 @ B1 (day 0)",
+      "PROVISION 0x HU-ST-06 @ B1 (day 0)",
+      "PROVISION 1x HU-SW-01 @ B1 (day 0)",
+      "PROVISION 1x FH-AC-04 @ B2 (day 0)",
+      "PROVISION 1x FH-BR-09 @ B2 (day 0)",
+      "PROVISION 4x FH-CT-08 @ B2 (day 0)",
+      "PROVISION 2x FH-FP-01 @ B2 (day 0)",
+      "PROVISION 2x FH-GN-07 @ B2 (day 0)",
+      "PROVISION 1x FH-HP-03 @ B2 (day 0)",
+      "PROVISION 0x FH-OP-02 @ B2 (day 0)",
+      "PROVISION 1x FH-RD-05 @ B2 (day 0)",
+      "PROVISION 3x HU-DA-07 @ B3 (day 0)",
+      "PROVISION 1x HU-FC-03 @ B3 (day 0)",
+      "PROVISION 0x HU-HP-04 @ B3 (day 0)",
+      "PROVISION 1x HU-ST-06 @ B3 (day 0)",
+      "PROVISION 0x HU-SW-01 @ B3 (day 0)",
+      "PROVISION 0x HU-AV-05 @ B4 (day 0)",
+      "PROVISION 0x HU-DA-07 @ B4 (day 0)",
+      "PROVISION 0x HU-FC-03 @ B4 (day 0)",
+      "PROVISION 2x HU-HP-04 @ B4 (day 0)",
+      "PROVISION 1x HU-ST-06 @ B4 (day 0)"
+    ],
+    "chanakya": [
+      "PROVISION 2x FH-BR-09 @ B1 (day 0)",
+      "PROVISION 6x FH-FP-01 @ B1 (day 0)",
+      "PROVISION 6x FH-GN-07 @ B1 (day 0)",
+      "PROVISION 1x FH-HP-03 @ B1 (day 0)",
+      "PROVISION 2x FH-OP-02 @ B1 (day 0)",
+      "PROVISION 1x HU-DA-07 @ B1 (day 0)",
+      "PROVISION 2x FH-BR-09 @ B2 (day 0)",
+      "PROVISION 1x FH-CT-08 @ B2 (day 0)",
+      "PROVISION 11x FH-FP-01 @ B2 (day 0)",
+      "PROVISION 5x FH-GN-07 @ B2 (day 0)",
+      "PROVISION 1x FH-OP-02 @ B2 (day 0)",
+      "PROVISION 3x HU-DA-07 @ B3 (day 0)",
+      "PROVISION 1x HU-ST-06 @ B3 (day 0)",
+      "PROVISION 1x HU-DA-07 @ B4 (day 0)",
+      "PROVISION 1x HU-HP-04 @ B4 (day 0)"
+    ]
+  },
+  "experiment": [
+    {
+      "scenario": "normal",
+      "policy": "P0 Reactive",
+      "availability": 0.6944,
+      "ci95": [
+        0.6863,
+        0.7026
+      ],
+      "RaR10": 0.667,
+      "CRaR10": 0.666,
+      "fighter": 0.6533,
+      "helo": 0.7493,
+      "nmcs_days": 6318.6,
+      "preventive_swaps": 0.0,
+      "delta_waad_vs_P0": 0.0,
+      "delta_waad_ci95": [
+        0.0,
+        0.0
+      ],
+      "fighter_sqe_equivalent": 0.0,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "normal",
+      "policy": "P1 Prediction-only",
+      "availability": 0.6574,
+      "ci95": [
+        0.6493,
+        0.6654
+      ],
+      "RaR10": 0.6376,
+      "CRaR10": 0.6283,
+      "fighter": 0.6067,
+      "helo": 0.7249,
+      "nmcs_days": 7368.2,
+      "preventive_swaps": 175.8,
+      "delta_waad_vs_P0": -867.2,
+      "delta_waad_ci95": [
+        -956.8,
+        -777.7
+      ],
+      "fighter_sqe_equivalent": -0.132,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "normal",
+      "policy": "P2 Predict+Spares+Schedule",
+      "availability": 0.7136,
+      "ci95": [
+        0.7041,
+        0.7231
+      ],
+      "RaR10": 0.6903,
+      "CRaR10": 0.6766,
+      "fighter": 0.646,
+      "helo": 0.8039,
+      "nmcs_days": 5777.4,
+      "preventive_swaps": 129.3,
+      "delta_waad_vs_P0": 311.3,
+      "delta_waad_ci95": [
+        229.9,
+        392.8
+      ],
+      "fighter_sqe_equivalent": 0.047,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "normal",
+      "policy": "P2 + smart routing",
+      "availability": 0.7106,
+      "ci95": [
+        0.7027,
+        0.7185
+      ],
+      "RaR10": 0.6893,
+      "CRaR10": 0.6785,
+      "fighter": 0.666,
+      "helo": 0.77,
+      "nmcs_days": 5836.4,
+      "preventive_swaps": 137.2,
+      "delta_waad_vs_P0": 344.7,
+      "delta_waad_ci95": [
+        109.1,
+        580.3
+      ],
+      "fighter_sqe_equivalent": 0.052,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "normal",
+      "policy": "P2 + rogue quarantine",
+      "availability": 0.7085,
+      "ci95": [
+        0.6992,
+        0.7178
+      ],
+      "RaR10": 0.6818,
+      "CRaR10": 0.6753,
+      "fighter": 0.6401,
+      "helo": 0.7997,
+      "nmcs_days": 5921.5,
+      "preventive_swaps": 124.3,
+      "delta_waad_vs_P0": 194.1,
+      "delta_waad_ci95": [
+        103.1,
+        285.2
+      ],
+      "fighter_sqe_equivalent": 0.03,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "normal",
+      "policy": "P2 + MRV portfolio",
+      "availability": 0.7092,
+      "ci95": [
+        0.7015,
+        0.7169
+      ],
+      "RaR10": 0.6848,
+      "CRaR10": 0.6829,
+      "fighter": 0.6503,
+      "helo": 0.7878,
+      "nmcs_days": 5915.2,
+      "preventive_swaps": 155.5,
+      "delta_waad_vs_P0": 251.0,
+      "delta_waad_ci95": [
+        137.9,
+        364.0
+      ],
+      "fighter_sqe_equivalent": 0.038,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "normal",
+      "policy": "P3 NIRANTAR",
+      "availability": 0.7074,
+      "ci95": [
+        0.6991,
+        0.7158
+      ],
+      "RaR10": 0.6854,
+      "CRaR10": 0.6788,
+      "fighter": 0.6642,
+      "helo": 0.765,
+      "nmcs_days": 5950.5,
+      "preventive_swaps": 162.9,
+      "delta_waad_vs_P0": 280.3,
+      "delta_waad_ci95": [
+        78.9,
+        481.8
+      ],
+      "fighter_sqe_equivalent": 0.043,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "P0 Reactive",
+      "availability": 0.6479,
+      "ci95": [
+        0.6381,
+        0.6578
+      ],
+      "RaR10": 0.623,
+      "CRaR10": 0.6117,
+      "fighter": 0.5718,
+      "helo": 0.7494,
+      "nmcs_days": 7619.8,
+      "preventive_swaps": 0.0,
+      "delta_waad_vs_P0": 0.0,
+      "delta_waad_ci95": [
+        0.0,
+        0.0
+      ],
+      "fighter_sqe_equivalent": 0.0,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "P1 Prediction-only",
+      "availability": 0.6174,
+      "ci95": [
+        0.6079,
+        0.6269
+      ],
+      "RaR10": 0.5941,
+      "CRaR10": 0.5862,
+      "fighter": 0.5365,
+      "helo": 0.7253,
+      "nmcs_days": 8488.5,
+      "preventive_swaps": 153.4,
+      "delta_waad_vs_P0": -699.9,
+      "delta_waad_ci95": [
+        -769.7,
+        -630.2
+      ],
+      "fighter_sqe_equivalent": -0.107,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "P2 Predict+Spares+Schedule",
+      "availability": 0.6709,
+      "ci95": [
+        0.6601,
+        0.6817
+      ],
+      "RaR10": 0.6338,
+      "CRaR10": 0.6269,
+      "fighter": 0.5717,
+      "helo": 0.8031,
+      "nmcs_days": 6976.9,
+      "preventive_swaps": 112.2,
+      "delta_waad_vs_P0": 409.9,
+      "delta_waad_ci95": [
+        301.1,
+        518.8
+      ],
+      "fighter_sqe_equivalent": 0.062,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "P2 + smart routing",
+      "availability": 0.7079,
+      "ci95": [
+        0.7009,
+        0.7148
+      ],
+      "RaR10": 0.6854,
+      "CRaR10": 0.6803,
+      "fighter": 0.6599,
+      "helo": 0.7718,
+      "nmcs_days": 5909.7,
+      "preventive_swaps": 136.3,
+      "delta_waad_vs_P0": 1458.0,
+      "delta_waad_ci95": [
+        1228.6,
+        1687.3
+      ],
+      "fighter_sqe_equivalent": 0.222,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "P2 + rogue quarantine",
+      "availability": 0.6678,
+      "ci95": [
+        0.6569,
+        0.6786
+      ],
+      "RaR10": 0.637,
+      "CRaR10": 0.6241,
+      "fighter": 0.5672,
+      "helo": 0.8018,
+      "nmcs_days": 7070.4,
+      "preventive_swaps": 106.9,
+      "delta_waad_vs_P0": 334.5,
+      "delta_waad_ci95": [
+        232.5,
+        436.4
+      ],
+      "fighter_sqe_equivalent": 0.051,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "P2 + MRV portfolio",
+      "availability": 0.6766,
+      "ci95": [
+        0.6663,
+        0.6868
+      ],
+      "RaR10": 0.6475,
+      "CRaR10": 0.6305,
+      "fighter": 0.5929,
+      "helo": 0.7882,
+      "nmcs_days": 6818.5,
+      "preventive_swaps": 124.9,
+      "delta_waad_vs_P0": 604.5,
+      "delta_waad_ci95": [
+        485.8,
+        723.1
+      ],
+      "fighter_sqe_equivalent": 0.092,
+      "spend_lakh": 598.0
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "P3 NIRANTAR",
+      "availability": 0.7089,
+      "ci95": [
+        0.7007,
+        0.7172
+      ],
+      "RaR10": 0.6836,
+      "CRaR10": 0.6698,
+      "fighter": 0.6564,
+      "helo": 0.779,
+      "nmcs_days": 5919.2,
+      "preventive_swaps": 160.6,
+      "delta_waad_vs_P0": 1461.6,
+      "delta_waad_ci95": [
+        1252.4,
+        1670.8
+      ],
+      "fighter_sqe_equivalent": 0.222,
+      "spend_lakh": 598.0
+    }
+  ],
+  "opportunities": [
+    {
+      "action": "PROVISION 1x HU-DA-07 @ B1 (day 0)",
+      "kind": "provision",
+      "pn": "HU-DA-07",
+      "base": "B1",
+      "qty": 1,
+      "mrv_aad": 42.2,
+      "ci95": [
+        -50.4,
+        134.7
+      ],
+      "p_positive": 0.5,
+      "delta_crar_pts": 0.32,
+      "sqe": 0.0138,
+      "cost_lakh": 5,
+      "aad_per_crore": 843.7,
+      "explanation": "Cuts waiting-for-parts time by 72.3 aircraft-days on average; largest on HE-B1-07 (21.2 d), HE-B3-05 (16.6 d), FI-B1-03 (14.4 d).",
+      "evidence_grade": "E1",
+      "authority": "Logistics officer"
+    },
+    {
+      "action": "PROVISION 1x FH-BR-09 @ B2 (day 0)",
+      "kind": "provision",
+      "pn": "FH-BR-09",
+      "base": "B2",
+      "qty": 1,
+      "mrv_aad": 12.7,
+      "ci95": [
+        -77.7,
+        103.2
+      ],
+      "p_positive": 0.56,
+      "delta_crar_pts": 0.43,
+      "sqe": 0.0019,
+      "cost_lakh": 6,
+      "aad_per_crore": 212.4,
+      "explanation": "Cuts waiting-for-parts time by 10.5 aircraft-days on average; largest on HE-B4-02 (12.3 d), FI-B2-20 (11.1 d), FI-B2-19 (10.3 d).",
+      "evidence_grade": "E1",
+      "authority": "Logistics officer"
+    },
+    {
+      "action": "PROVISION 1x FH-OP-02 @ B1 (day 0)",
+      "kind": "provision",
+      "pn": "FH-OP-02",
+      "base": "B1",
+      "qty": 1,
+      "mrv_aad": 16.3,
+      "ci95": [
+        -41.3,
+        73.9
+      ],
+      "p_positive": 0.62,
+      "delta_crar_pts": 0.2,
+      "sqe": 0.0025,
+      "cost_lakh": 12,
+      "aad_per_crore": 135.8,
+      "explanation": "Cuts waiting-for-parts time by 15.1 aircraft-days on average; largest on FI-B2-20 (12.6 d), FI-B1-14 (9.6 d), HE-B4-05 (8.6 d).",
+      "evidence_grade": "E1",
+      "authority": "Logistics officer"
+    },
+    {
+      "action": "PROVISION 1x FH-BR-09 @ B1 (day 0)",
+      "kind": "provision",
+      "pn": "FH-BR-09",
+      "base": "B1",
+      "qty": 1,
+      "mrv_aad": 6.4,
+      "ci95": [
+        -98.9,
+        111.7
+      ],
+      "p_positive": 0.56,
+      "delta_crar_pts": 0.11,
+      "sqe": 0.001,
+      "cost_lakh": 6,
+      "aad_per_crore": 106.6,
+      "explanation": "Cuts waiting-for-parts time by 5.6 aircraft-days on average; largest on FI-B2-19 (12.6 d), HE-B4-02 (10.8 d), HE-B1-08 (10.3 d).",
+      "evidence_grade": "E1",
+      "authority": "Logistics officer"
+    },
+    {
+      "action": "PROVISION 1x FH-GN-07 @ B2 (day 0)",
+      "kind": "provision",
+      "pn": "FH-GN-07",
+      "base": "B2",
+      "qty": 1,
+      "mrv_aad": 4.0,
+      "ci95": [
+        -45.8,
+        53.8
+      ],
+      "p_positive": 0.69,
+      "delta_crar_pts": 0.32,
+      "sqe": 0.0006,
+      "cost_lakh": 14,
+      "aad_per_crore": 28.5,
+      "explanation": "Cuts waiting-for-parts time by 6.3 aircraft-days on average; largest on FI-B2-14 (7.3 d), FI-B1-20 (6.1 d), FI-B1-17 (5.4 d).",
+      "evidence_grade": "E1",
+      "authority": "Logistics officer"
+    },
+    {
+      "action": "PROVISION 1x FH-GN-07 @ B1 (day 0)",
+      "kind": "provision",
+      "pn": "FH-GN-07",
+      "base": "B1",
+      "qty": 1,
+      "mrv_aad": -7.8,
+      "ci95": [
+        -60.1,
+        44.5
+      ],
+      "p_positive": 0.44,
+      "delta_crar_pts": 0.04,
+      "sqe": -0.0012,
+      "cost_lakh": 14,
+      "aad_per_crore": -55.8,
+      "explanation": "No material change in waiting-for-parts (NMCS) time.",
+      "evidence_grade": "E1",
+      "authority": "Logistics officer"
+    },
+    {
+      "action": "PROVISION 1x HU-DA-07 @ B4 (day 0)",
+      "kind": "provision",
+      "pn": "HU-DA-07",
+      "base": "B4",
+      "qty": 1,
+      "mrv_aad": -4.3,
+      "ci95": [
+        -92.6,
+        83.9
+      ],
+      "p_positive": 0.44,
+      "delta_crar_pts": -0.21,
+      "sqe": -0.0014,
+      "cost_lakh": 5,
+      "aad_per_crore": -86.2,
+      "explanation": "Cuts waiting-for-parts time by 25.1 aircraft-days on average; largest on HE-B3-05 (18.8 d), HE-B1-07 (11.2 d), FI-B2-19 (10.7 d).",
+      "evidence_grade": "E1",
+      "authority": "Logistics officer"
+    },
+    {
+      "action": "PROVISION 1x HU-DA-07 @ B3 (day 0)",
+      "kind": "provision",
+      "pn": "HU-DA-07",
+      "base": "B3",
+      "qty": 1,
+      "mrv_aad": -7.8,
+      "ci95": [
+        -101.3,
+        85.7
+      ],
+      "p_positive": 0.44,
+      "delta_crar_pts": 0.17,
+      "sqe": -0.0025,
+      "cost_lakh": 5,
+      "aad_per_crore": -155.5,
+      "explanation": "Cuts waiting-for-parts time by 16.2 aircraft-days on average; largest on HE-B3-05 (15.4 d), HE-B3-09 (15.2 d), HE-B4-08 (13.0 d).",
+      "evidence_grade": "E1",
+      "authority": "Logistics officer"
+    }
+  ],
+  "cost_of_delay": {
+    "action": "PROVISION 1x HU-DA-07 @ B1 (day 0)",
+    "mrv_now": 42.2,
+    "mrv_if_delayed_60d": 8.7,
+    "cost_of_delay_waad_per_day": 0.557
+  },
+  "indigenisation": [
+    {
+      "pn": "FH-OP-02",
+      "name": "Engine oil pump",
+      "origin": "RU",
+      "cost_lakh": 360.0,
+      "mrv_normal": 402.8,
+      "ci_normal": [
+        307.4,
+        498.2
+      ],
+      "mrv_shock": 375.4,
+      "ci_shock": [
+        267.2,
+        483.5
+      ],
+      "delta_crar_shock_pts": 1.39,
+      "risk_weighted_mrv": 389.1,
+      "waad_per_crore": 108.1
+    },
+    {
+      "pn": "FH-HP-03",
+      "name": "Hydraulic pump",
+      "origin": "RU",
+      "cost_lakh": 450.0,
+      "mrv_normal": 493.9,
+      "ci_normal": [
+        394.4,
+        593.3
+      ],
+      "mrv_shock": 366.0,
+      "ci_shock": [
+        262.7,
+        469.2
+      ],
+      "delta_crar_shock_pts": 1.56,
+      "risk_weighted_mrv": 429.9,
+      "waad_per_crore": 95.5
+    },
+    {
+      "pn": "FH-GN-07",
+      "name": "AC generator",
+      "origin": "RU",
+      "cost_lakh": 420.0,
+      "mrv_normal": 333.4,
+      "ci_normal": [
+        221.4,
+        445.3
+      ],
+      "mrv_shock": 235.8,
+      "ci_shock": [
+        150.5,
+        321.0
+      ],
+      "delta_crar_shock_pts": 0.85,
+      "risk_weighted_mrv": 284.6,
+      "waad_per_crore": 67.8
+    },
+    {
+      "pn": "FH-FP-01",
+      "name": "Engine fuel pump",
+      "origin": "RU",
+      "cost_lakh": 540.0,
+      "mrv_normal": 321.3,
+      "ci_normal": [
+        207.2,
+        435.4
+      ],
+      "mrv_shock": 264.1,
+      "ci_shock": [
+        199.1,
+        329.1
+      ],
+      "delta_crar_shock_pts": 1.29,
+      "risk_weighted_mrv": 292.7,
+      "waad_per_crore": 54.2
+    },
+    {
+      "pn": "FH-CT-08",
+      "name": "ECS cooling turbine",
+      "origin": "RU",
+      "cost_lakh": 480.0,
+      "mrv_normal": 301.8,
+      "ci_normal": [
+        184.1,
+        419.6
+      ],
+      "mrv_shock": 188.9,
+      "ci_shock": [
+        83.5,
+        294.3
+      ],
+      "delta_crar_shock_pts": 0.62,
+      "risk_weighted_mrv": 245.3,
+      "waad_per_crore": 51.1
+    },
+    {
+      "pn": "HU-ST-06",
+      "name": "Starter-generator",
+      "origin": "FR",
+      "cost_lakh": 360.0,
+      "mrv_normal": 200.8,
+      "ci_normal": [
+        111.0,
+        290.6
+      ],
+      "mrv_shock": 52.9,
+      "ci_shock": [
+        -21.6,
+        127.5
+      ],
+      "delta_crar_shock_pts": 0.11,
+      "risk_weighted_mrv": 126.9,
+      "waad_per_crore": 35.2
+    },
+    {
+      "pn": "HU-FC-03",
+      "name": "Fuel control unit",
+      "origin": "FR",
+      "cost_lakh": 540.0,
+      "mrv_normal": 232.8,
+      "ci_normal": [
+        136.3,
+        329.4
+      ],
+      "mrv_shock": 125.9,
+      "ci_shock": [
+        41.3,
+        210.6
+      ],
+      "delta_crar_shock_pts": 0.83,
+      "risk_weighted_mrv": 179.4,
+      "waad_per_crore": 33.2
+    },
+    {
+      "pn": "FH-RD-05",
+      "name": "Radar transmitter",
+      "origin": "RU",
+      "cost_lakh": 1800.0,
+      "mrv_normal": 230.9,
+      "ci_normal": [
+        146.4,
+        315.3
+      ],
+      "mrv_shock": 145.7,
+      "ci_shock": [
+        70.8,
+        220.7
+      ],
+      "delta_crar_shock_pts": 0.99,
+      "risk_weighted_mrv": 188.3,
+      "waad_per_crore": 10.5
+    }
+  ],
+  "ledger": {
+    "entries": 19,
+    "tree_head": {
+      "size": 19,
+      "root": "1b453294ac02d37361cae44f33dc48d6e5d6701f2093f54c8cb5353f071e72db",
+      "ts": 1791150797.4320018,
+      "witness": "NIRANTAR-national-node",
+      "signature": "TylnvZqXeDHjIu6ySIAw5EdGi/cwifZVglNxVjJSQpHojLj55jxOtNnyBPP1c3dhBgzHdMUrCwfk29fSMlHJBg==",
+      "witness_key": "wqIDQgAZeOBzZi4AixA1uMPx1uBbVWTcgw2M5OymZwk="
+    },
+    "verify_all": []
+  }
+}
