@@ -519,7 +519,7 @@ function renderDesk() {
         cell = `${d ? badge("warning", "Deferred") : ""}<div class="sign" data-seq="${it.ledger_seq}">
           <select aria-label="Decision for action ${it.n}"><option value="">Choose…</option>${reasonOpts}</select><button type="button">Sign</button></div>`;
       }
-      const cod = it.cod_per_day != null ? (Math.abs(it.cod_per_day) < 0.1 ? "≈0" : fmt(it.cod_per_day, 1)) : "–";
+      const cod = it.cod_per_day != null ? (it.cod_per_day < 0.1 ? "≈0" : fmt(it.cod_per_day, 1)) : "–";
       return `<tr><td class="num">${it.n}</td>
         <td class="act"><span class="kind">${esc(it.kind_label)}</span><div class="act-text">${esc(it.text)}</div>
           <div class="small">${esc(it.reason)}</div>
@@ -981,6 +981,171 @@ async function renderSaarthi() {
   } else loadEntries().catch(() => renderEntries());
 }
 
+// ------------------------------------------------------------ guided demo (Document 3 §13.3, 7 minutes)
+const GD = { i: 0, t0: null, tick: null, busy: false };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+async function waitFor(fn, ms = 240000) {
+  const t = Date.now();
+  while (!fn()) { if (Date.now() - t > ms) throw new Error("timed out"); await sleep(300); }
+}
+function spot(sel) {
+  document.querySelectorAll(".spot").forEach((n) => n.classList.remove("spot"));
+  const n = sel && $(sel);
+  if (n) { n.classList.add("spot"); n.scrollIntoView({ behavior: "smooth", block: "center" }); }
+}
+async function approveAllForDemo() {
+  const v = DK.view;
+  for (const it of v.plan.items) {
+    if (it.decision && it.decision.verdict !== "defer") continue;
+    const role = v.roles.find((r) => canDecide(it, r));
+    if (!role) continue;
+    await api("/api/decision", { ledger_seq: it.ledger_seq, verdict: "accept", reason_code: "MRV_CI_POSITIVE", role });
+  }
+  S.ledger = await api("/api/ledger");
+  await loadPlan();
+}
+const planReady = () => DK.view && DK.view.state.status !== "building" && DK.view.plan;
+const exp = (scen, pol) => S.report.experiment.find((e) => e.scenario === scen && e.policy === pol) || {};
+
+const STEPS = [
+  { title: "Before you start", at: null, tab: "readiness", label: "Reset the station to day 0",
+    notes: () => ["Run this a minute before presenting. It resets the operations clock to the end of the records (day 0) and keeps today's plan.",
+      "Close other tabs, set the browser zoom so the whole tile row fits, and pick light or dark with <b>Theme</b>.",
+      "Every number in the console is from synthetic data (BHARAT-FLEET). Say so once, up front."],
+    run: async () => {
+      await api("/api/clock/reset", {});
+      if (DK.view) { DK.outcome = null; await loadClock(); await loadPlan(); }      // the desk re-reads its state
+      selectTab("readiness"); toast("Station reset to day 0");
+    } },
+  { title: "The problem in one chart", at: 0, tab: "readiness", spot: "#tiles", label: "Show the 12-month forecast",
+    notes: () => { const p0 = exp("normal", "P0 Reactive"); return [
+      `With today's procedures the force keeps about <b>${pct(p0.availability)}</b> of its aircraft available, against a 75% goal.`,
+      `The shaded band is the spread over ${S.report.config.n_seeds} simulated futures: readiness is a <b>risk</b>, not a number.`,
+      "Most of the gap is aircraft <b>waiting for parts</b>, not aircraft breaking. That is what NIRANTAR attacks."]; },
+    run: async () => { selectTab("readiness"); $('#scen-seg button[data-scen="normal"]').click(); spot("#fan"); } },
+  { title: "Morning huddle: today's board and plan", at: 45, tab: "desk", spot: "#desk-tiles", label: "Open the plan's top action",
+    notes: () => { const P = DK.view?.plan, j = P?.joint || {}, it = P?.items?.[0];
+      return [
+        `<b>${DK.view ? P.board.tails.filter((t) => t.status === "NMCS").length : "–"} of 70</b> aircraft are waiting for parts this morning.`,
+        P ? `The desk priced <b>${P.n_candidates}</b> possible actions and proposes <b>${P.items.length}</b> for <b>₹${fmt(P.cost_lakh, 1)} lakh</b>: worth <b>${signed(j.mrv)}</b> weighted aircraft-days over 90 days (95% CI ${fmt(j.ci95[0])}–${fmt(j.ci95[1])}).` : "Load the plan.",
+        it ? `Top action: <b>${esc(it.text)}</b>. It names its approver (<b>${esc(it.authority)}</b>) and what a week's delay costs.` : "",
+        "Open “What the simulation shows”: it lists which aircraft stop waiting and by how much."]; },
+    run: async () => { selectTab("desk"); await waitFor(() => $("#plan-table .why")); $("#plan-table .why").open = true; spot("#plan-table tbody tr"); } },
+  { title: "SAARTHI: a snag spoken in Hindi", at: 105, tab: "saarthi", spot: "#snag-card", label: "Speak (example) and sign",
+    notes: () => ["A technician says the snag in Hindi, Hinglish or English. Use the microphone in Chrome or Edge, or the example button.",
+      "Each field shows whether it was <b>heard</b> or <b>inferred</b>. It never invents a value; if unsure, it asks.",
+      "The checks run against the records: wrong serial, rogue unit, fleet signal, spares on the shelf. Then it is <b>signed into the ledger</b>."],
+    run: async () => {
+      selectTab("saarthi"); await waitFor(() => $('#examples button[data-ex="2"]'));
+      $('#examples button[data-ex="2"]').click(); await waitFor(() => !$("#snag-card").hidden && $("#snag-checks li"));
+      spot("#snag-card"); await sleep(1800);
+      if (!$("#confirm-btn").disabled) $("#confirm-btn").click();
+    } },
+  { title: "DRISHTI: a fleet signal from the records", at: 150, tab: "signals", spot: "#sig-tiles", label: "Show the signal table",
+    notes: () => { const s = (S.report.drishti.table || []).find((r) => r.signal);
+      return [s ? `Confirmed: <b>${nice(s.family)} ${nice(s.mode)}</b> in <b>${nice(s.env)}</b> bases, <b>${fmt(s.rate_ratio, 1)}×</b> the fleet rate per flight hour.` : "Confirmed signals appear here.",
+        "Found the way drug-safety teams find side effects: disproportionate reports, confirmed against flight-hour exposure.",
+        "Action: a targeted inspection for that context only, not the whole fleet."]; },
+    run: async () => { selectTab("signals"); spot("#sig-table"); } },
+  { title: "Approve and run a week", at: 195, tab: "desk", spot: "#clock-card", label: "Approve the plan, advance 7 days",
+    notes: () => ["Each approver signs only what the Action Authority Matrix gives them; the server refuses anyone else.",
+      "Advancing the clock applies the approved actions. A <b>shadow fleet</b> meets exactly the same failures and repair times but takes no decisions.",
+      "The gap between the two lines is what the decisions bought, measured, not estimated."],
+    run: async () => {
+      selectTab("desk"); await waitFor(planReady);
+      await approveAllForDemo(); await advanceClock(7); await waitFor(planReady); spot("#clock-card");
+    } },
+  { title: "Shock: Russian supply disrupted", at: 225, tab: "desk", spot: "#clock-card", label: "Declare a 120-day disruption",
+    notes: () => { const P = DK.view?.plan, j = P?.joint || {}, top = P?.items?.[0];
+      return ["Exercise control declares Russian shipping, customs and payments disrupted for 120 days. It is signed into the ledger.",
+        P && P.scenario?.length ? `The desk re-plans for the crisis: <b>${P.items.length}</b> actions worth <b>${signed(j.mrv)}</b>, led by <b>${esc(top?.text || "")}</b>.` : "The desk re-plans for the crisis.",
+        "Re-routing repairs to an Indian depot cuts a ~262-day repair loop to ~38 days. The card states the trade-off: those repairs are less durable."]; },
+    run: async () => {
+      selectTab("desk"); await waitFor(planReady);
+      $("#shock-country").value = "RU"; $("#shock-days").value = "120";
+      await declareShock(); await waitFor(planReady); renderGuide(); spot("#plan-table tbody tr");
+    } },
+  { title: "SUSHRUTA: repair quality, not just speed", at: 270, tab: "agencies", spot: "#ag-dots", label: "Show agency quality",
+    notes: () => { const r = S.report.sushruta.rogues;
+      return ["Each agency's repair effectiveness is estimated from maintenance records alone, with an interval, and checked against the hidden truth.",
+        `Rogue units (serials that keep failing) are flagged with <b>${Math.round(r.precision * 100)}%</b> precision; they are quarantined from the aircraft-on-ground pool.`,
+        "That is where the durability trade-off on the routing card comes from."]; },
+    run: async () => { selectTab("agencies"); spot("#ag-dots"); } },
+  { title: "The proof", at: 300, tab: "readiness", spot: "#policy-bars", label: "Show the policy comparison under shock",
+    notes: () => { const a = exp("supply_shock", "P0 Reactive"), b = exp("supply_shock", "P3 NIRANTAR"), p1 = exp("supply_shock", "P1 Prediction-only");
+      return [`Under a supply shock, NIRANTAR keeps <b>${pct(b.availability)}</b> available vs <b>${pct(a.availability)}</b> with today's procedures: <b>${signed(b.delta_waad_vs_P0)}</b> weighted aircraft-days, about <b>${fmt(b.fighter_sqe_equivalent, 2)}</b> fighter squadrons' worth.`,
+        `Prediction alone <b>hurts</b> (${signed(p1.delta_waad_vs_P0)}): it pulls parts early without the logistics to back it. The value is in pricing and routing.`,
+        DK.clock?.log?.length ? `On the clock today: <b>${signed(DK.clock.waad_gained)}</b> weighted aircraft-days gained over the shadow fleet.` : ""]; },
+    run: async () => { selectTab("readiness"); $('#scen-seg button[data-scen="supply_shock"]').click(); spot("#policy-bars"); } },
+  { title: "Trust: tamper with the record", at: 345, tab: "ledger", spot: "#verify-result", label: "Verify, then tamper",
+    notes: () => ["Every snag, recommendation, decision, execution and scenario is a signed, hash-chained ledger entry.",
+      "Ask a judge to pick an entry; the tamper demo edits a copy and verification catches it instantly. The real ledger stays intact.",
+      "Evidence grade decides who may approve. NIRANTAR never grounds or releases an aircraft."],
+    run: async () => { selectTab("ledger"); await verifyLedger(); await sleep(1200); await tamperDemo(); spot("#verify-result"); } },
+  { title: "Close", at: 390, tab: null, label: null,
+    notes: () => ["<b>“NIRANTAR doesn't predict failures. It prices readiness, continuously.”</b>",
+      "Ask: a pilot on two bases and one BRD, in shadow mode first, with the Services' real records.",
+      "Everything shown runs offline on one laptop, from open-source parts."], run: null },
+];
+
+function renderGuide() {
+  const st = STEPS[GD.i];
+  $("#guide-step").textContent = GD.i === 0 ? "Preparation" : `Step ${GD.i} / ${STEPS.length - 1}`;
+  $("#guide-title").textContent = st.title;
+  $("#guide-notes").innerHTML = st.notes().filter(Boolean).map((n) => `<li>${n}</li>`).join("");
+  const doBtn = $("#guide-do");
+  doBtn.hidden = !st.run; doBtn.textContent = GD.busy ? "Working…" : st.label || "Do it"; doBtn.disabled = GD.busy;
+  $("#guide-back").disabled = GD.i === 0 || GD.busy; $("#guide-next").disabled = GD.i === STEPS.length - 1 || GD.busy;
+  updateGuideClock();
+}
+function updateGuideClock() {
+  const st = STEPS[GD.i], next = STEPS[GD.i + 1];
+  if (st.at == null || GD.t0 == null) { $("#guide-clock").textContent = st.at == null ? "" : `target ${mmss(st.at)}`; return; }
+  const el_ = (Date.now() - GD.t0) / 1000;
+  const end = next && next.at != null ? next.at : 420;
+  const over = el_ - end;
+  $("#guide-clock").textContent = `${mmss(el_)} · slot ${mmss(st.at)}–${mmss(end)}${over > 0 ? ` · ${mmss(over)} over` : ""}`;
+}
+function goStep(i) {
+  GD.i = Math.max(0, Math.min(STEPS.length - 1, i));
+  if (GD.i >= 1 && GD.t0 == null) GD.t0 = Date.now();
+  const st = STEPS[GD.i];
+  if (st.tab) selectTab(st.tab);
+  spot(st.spot);
+  renderGuide();
+  setTimeout(renderGuide, 1500);            // notes that quote the plan refresh once the tab has loaded it
+}
+async function doStep() {
+  const st = STEPS[GD.i];
+  if (!st.run || GD.busy) return;
+  GD.busy = true; renderGuide();
+  try { await st.run(); } catch (e) { toast("Demo step failed: " + e.message); }
+  finally { GD.busy = false; renderGuide(); }
+}
+function guideSetup() {
+  $("#demo-btn").addEventListener("click", () => {
+    const g = $("#guide");
+    g.hidden = !g.hidden;
+    if (!g.hidden) { goStep(GD.i); clearInterval(GD.tick); GD.tick = setInterval(updateGuideClock, 1000); }
+    else { clearInterval(GD.tick); spot(null); }
+  });
+  $("#guide-close").addEventListener("click", () => { $("#guide").hidden = true; clearInterval(GD.tick); spot(null); });
+  $("#guide-mini").addEventListener("click", () => {
+    const g = $("#guide"), mini = g.classList.toggle("mini");
+    $("#guide-mini").textContent = mini ? "Notes" : "Minimise";
+  });
+  $("#guide-back").addEventListener("click", () => goStep(GD.i - 1));
+  $("#guide-next").addEventListener("click", () => goStep(GD.i + 1));
+  $("#guide-do").addEventListener("click", doStep);
+  document.addEventListener("keydown", (ev) => {
+    if ($("#guide").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
+    if (ev.key === "ArrowRight") goStep(GD.i + 1);
+    else if (ev.key === "ArrowLeft") goStep(GD.i - 1);
+    else if (ev.key.toLowerCase() === "d") doStep();
+  });
+}
+
 // ------------------------------------------------------------ shell
 function selectTab(name) {
   document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
@@ -1011,6 +1176,7 @@ async function init() {
     document.documentElement.dataset.theme = cur === "dark" ? "light" : "dark";
   });
   $("#sim-form").addEventListener("submit", runSim);
+  guideSetup();
   $("#verify-btn").addEventListener("click", verifyLedger);
   $("#tamper-btn").addEventListener("click", tamperDemo);
   let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderAll, 150); });

@@ -237,3 +237,24 @@ td.small, .small { font-size: 12px; color: var(--text-secondary); }
 .shock-status { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .chart .band { fill: var(--surface-2); }
 .chart text.band-label { fill: var(--text-secondary); font-size: 11px; }
+
+/* Guided demo */
+.guide { position: fixed; right: 20px; bottom: 20px; width: 400px; max-height: calc(100vh - 40px); overflow-y: auto;
+  z-index: 25; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.18); }
+.guide-head { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.guide-head .guide-clock { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
+.guide-head #guide-step { white-space: nowrap; }
+.guide.mini .guide-notes, .guide.mini .hint { display: none; }
+.guide.mini { width: 340px; }
+.guide h3 { margin: 6px 0 4px; font-size: 17px; }
+.guide-notes { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; color: var(--text-secondary); }
+.guide-notes li { margin: 4px 0; }
+.guide-notes b { color: var(--text-primary); }
+.guide-btns { display: flex; gap: 8px; }
+.guide-btns #guide-do { flex: 1; }
+.small-btn { padding: 3px 9px !important; font-size: 12px !important; }
+.spot { outline: 3px solid var(--series-1); outline-offset: 4px; border-radius: var(--radius); transition: outline-color 0.3s; }
+@media (max-width: 700px) {
+  .guide { left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 55vh; }
+}
