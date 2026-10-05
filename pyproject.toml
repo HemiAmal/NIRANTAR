@@ -16,5 +16,8 @@ dev = ["pytest>=7"]
 [tool.setuptools.packages.find]
 include = ["nirantar*"]
 
+[tool.setuptools.package-data]
+"nirantar.ui" = ["static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

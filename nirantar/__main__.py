@@ -1,4 +1,4 @@
-"""Command line: python -m nirantar demo [--quick] [--out DIR]"""
+"""Command line: python -m nirantar demo [--quick] [--out DIR] | serve [--port 8050]"""
 from __future__ import annotations
 
 import argparse
@@ -13,7 +13,15 @@ def main() -> None:
     d.add_argument("--quick", action="store_true", help="fewer seeds and shorter history (about a minute)")
     d.add_argument("--out", default="experiments/results")
     d.add_argument("--seeds", type=int, default=None, help="ensemble seeds per policy arm")
+    sv = sub.add_parser("serve", help="open the web console on the latest results")
+    sv.add_argument("--results", default="experiments/results")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=8050)
     args = ap.parse_args()
+    if args.cmd == "serve":
+        from nirantar.ui.server import serve
+        serve(args.results, args.host, args.port)
+        return
     cfg = Config(out_dir=args.out, quick=args.quick)
     if args.seeds:
         cfg.n_seeds = args.seeds

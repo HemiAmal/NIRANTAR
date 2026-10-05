@@ -162,17 +162,18 @@ class Twin:
         self._events: list = []
         self._seq = 0
         self.t = 0.0
-        self._init_regimes()
+        self._init_regimes((start or {}).get("regimes", {}))
         self._init_state(start)
         self._apply_actions()
 
     # ------------------------------------------------------------ setup
 
-    def _init_regimes(self) -> None:
+    def _init_regimes(self, initial: dict[str, int] | None = None) -> None:
         n_days = int(self.H) + 2
         self.regime_state: dict[str, np.ndarray] = {}
         for c, m in self.w.regimes.items():
             states = np.zeros(n_days, dtype=int)
+            states[0] = int((initial or {}).get(c, 0))     # continue from the regime history ended in
             if len(m.states) > 1:
                 g = krng(self.seed, "regime", c)
                 u = g.random(n_days)
@@ -695,6 +696,7 @@ class Twin:
             "since_insp": {t["id"]: t["since_insp"] for t in self.tails},
             "stock": {k: list(v) for k, v in self.stock.items() if v},
             "pipeline": pipeline,
+            "regimes": {c: int(st[min(int(self.H), len(st) - 1)]) for c, st in self.regime_state.items()},
         }
 
     def _result(self) -> RunResult:

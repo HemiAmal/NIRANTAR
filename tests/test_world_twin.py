@@ -56,3 +56,12 @@ def test_accumulate_bins():
     arr = np.zeros(4)
     _accumulate(arr, 0.5, 2.25)
     assert np.allclose(arr, [0.5, 1.0, 0.25, 0.0])
+
+
+def test_forecast_continues_supply_regime(world):
+    tw = Twin(world, P0, 400, seed=11)
+    tw.run()
+    snap = tw.snapshot()
+    nxt = Twin(world, P0, 30, seed=12, start=snap)
+    for c, state in snap["regimes"].items():
+        assert nxt.regime_state[c][0] == state

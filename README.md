@@ -18,9 +18,10 @@ A proposed sovereign decision platform for military aircraft predictive maintena
 
 ```bash
 pip install -e ".[dev]"            # numpy, scipy, pandas, cryptography, pytest
-python -m pytest -q                # 45 tests
+python -m pytest -q                # 52 tests
 python -m nirantar demo --quick    # ~15 s end-to-end run
 python -m nirantar demo            # full run -> experiments/results/milestone1_report.md
+python -m nirantar serve           # web console -> http://127.0.0.1:8050
 ```
 
 | Package | Module (Doc 3) | Role |
@@ -34,5 +35,6 @@ python -m nirantar demo            # full run -> experiments/results/milestone1_
 | `nirantar/chitragupta` | CHITRAGUPTA | Signed Merkle evidence ledger |
 | `nirantar/chanakya` | CHANAKYA | Marginal Readiness Value, Cost-of-Delay, portfolios |
 | `nirantar/vishwakarma` | VISHWAKARMA | Readiness-weighted indigenisation ranking |
+| `nirantar/ui` | Console | Offline web console: readiness room, live what-if, opportunities, agencies, signals, indigenisation, ledger |
 
 All data in this repository is synthetic. No number is an IAF result.
