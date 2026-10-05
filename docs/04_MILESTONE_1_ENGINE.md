@@ -26,8 +26,8 @@
 ## 2. How to run
 
 ```bash
-pip install -e ".[dev]"            # numpy, scipy, pandas, cryptography, pytest
-python -m pytest -q                # 52 tests, ~20 s
+python -m pip install -e ".[dev]"  # numpy, scipy, pandas, cryptography, pytest
+python -m pytest -q                # all tests, ~20 s
 python -m nirantar demo --quick    # ~15 s, fewer seeds
 python -m nirantar demo            # full run, ~60 s -> experiments/results/
 python -m nirantar serve           # web console on http://127.0.0.1:8050

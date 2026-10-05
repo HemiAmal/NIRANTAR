@@ -75,3 +75,21 @@ def test_live_simulation(console_url):
     code, r = post(url + "/api/simulate", {"policy": "P3", "shock_start": 10, "shock_days": 60, "seeds": 2, "horizon": 60})
     assert code == 200 and 0 < r["mean"] < 1 and len(r["fan"]["p50"]) > 0
     assert post(url + "/api/simulate", {"policy": "PX"})[0] == 400
+
+
+def test_saarthi_endpoints(console_url):
+    url, _ = console_url
+    opts = json.loads(get(url + "/api/saarthi/options")[1])
+    assert len(opts["tails"]) == 70 and opts["actions"]
+    code, r = post(url + "/api/saarthi/parse", {"text": "FI B1 07 doosra hydraulic pump leak, badal diya"})
+    assert code == 200 and r["fields"]["tail"] == "FI-B1-07" and r["draft"]["lang"] == "hinglish"
+    code, c = post(url + "/api/saarthi/check", {"fields": r["fields"]})
+    assert code == 200 and c["ready"]
+    code, e = post(url + "/api/saarthi/confirm", {"fields": r["fields"], "transcript": r["draft"]["text"], "input": "typed"})
+    assert code == 200 and e["tail"] == "FI-B1-07"
+    entries = json.loads(get(url + "/api/saarthi/entries")[1])
+    assert entries["entries"][0]["seq"] == e["seq"] and entries["stats"]["entries"] >= 1
+    assert post(url + "/api/saarthi/confirm", {"fields": {"tail": "FI-B1-07"}})[0] == 400
+    assert post(url + "/api/saarthi/check", {"fields": "nope"})[0] == 400
+    assert post(url + "/api/saarthi/parse", [1, 2])[0] == 400
+    assert json.loads(get(url + "/api/ledger")[1])["failed"] == []
