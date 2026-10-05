@@ -39,8 +39,10 @@ def _json_default(o):
 
 class PlanDesk:
     def __init__(self, world: World, start: dict, dm: DecisionModel, n_fail: dict, dq: dict,
-                 ledger: Ledger, signer: Signer, path: str | Path, policy: Policy = P0, **plan_kwargs):
+                 ledger: Ledger, signer: Signer, path: str | Path, policy: Policy = P0, day: int = 0,
+                 **plan_kwargs):
         self.w, self.start, self.dm, self.n_fail, self.dq = world, start, dm, n_fail, dq
+        self.day = day
         self.ledger, self.signer, self.path, self.policy = ledger, signer, Path(path), policy
         self.kwargs = plan_kwargs
         self.plan: dict | None = None
@@ -59,12 +61,13 @@ class PlanDesk:
         plan = build_plan(self.w, self.start, self.dm, self.policy, self.n_fail, self.dq,
                           log=log, progress=progress, **self.kwargs)
         plan["plan_id"] = "PLAN-" + time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
+        plan["day"] = self.day
         for it in plan["items"]:
             e = self.ledger.append("recommendation", {
                 "plan_id": plan["plan_id"], "action": it["label"], "kind": it["kind"], "text": it["text"],
                 "mrv_aad": it["mrv"], "ci95": it["ci95"], "cost_lakh": it["cost_lakh"],
                 "cod_per_day": it.get("cod_per_day"), "evidence_grade": it["grade"],
-                "authority": it["authority"], "horizon_days": plan["horizon_days"],
+                "authority": it["authority"], "horizon_days": plan["horizon_days"], "day": self.day,
             }, self.signer)
             it["ledger_seq"] = e["seq"]
             it["ledger_hash"] = e["entry_hash"][:16]
@@ -116,7 +119,7 @@ class PlanDesk:
             raise ValueError(f"reason must be one of {', '.join(REASONS[verdict])}")
 
     def view(self) -> dict:
-        out = {"state": self.state, "roles": ROLES, "reasons": REASONS}
+        out = {"state": self.state, "roles": ROLES, "reasons": REASONS, "day": self.day}
         if self.plan is not None:
             dec = self.decisions()
             for it in self.plan["items"]:
@@ -133,6 +136,13 @@ class PlanDesk:
         return out
 
     # ------------------------------------------------------------ outcome
+
+    def approved_unapplied(self, applied: set[int]) -> list[dict]:
+        if self.plan is None:
+            return []
+        dec = self.decisions()
+        return [it for it in self.plan["items"] if it.get("ledger_seq") not in applied
+                and (dec.get(it.get("ledger_seq")) or {}).get("verdict") == "accept"]
 
     def outcome(self, which: str = "approved", n_seeds: int = 12) -> dict:
         if self.plan is None:

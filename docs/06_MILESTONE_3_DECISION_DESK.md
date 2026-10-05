@@ -17,6 +17,8 @@ python -m nirantar plan         # prepare today's plan offline (also signs it in
 
 A plan is already saved in `experiments/results/plan.json`, so the tab opens instantly. **Re-plan now** builds a fresh plan in the background (about 20 s on a 4-core machine, using all cores up to 8).
 
+> Numbers below were re-priced in Milestone 4, when the desk started continuing the fleet state exactly (remaining maintenance work, how long each aircraft has waited, first-come-first-served order). The changes are small.
+
 ---
 
 ## 2. What the desk does
@@ -103,21 +105,21 @@ Today the fleet has **33 of 70 aircraft waiting for parts**, and 2 more in maint
 | | Value |
 |---|---|
 | Candidate actions generated | 89: 43 expedites, 36 cannibalisations, 7 transfers, 3 purchases |
-| Refined on 24 futures after screening | 75 |
+| Refined on 24 futures after screening | 77 |
 | **Selected** | **20**: 10 expedites, 5 controlled cannibalisations, 3 lateral transfers, 2 purchases |
 | Approvers | 15 for the Logistics officer, 5 for the CEngO |
-| Cost | ₹30.3 lakh (budget ₹50 lakh) |
-| **Plan value, 90 days** (joint, on the 24 futures used to choose it) | **+180 weighted aircraft-days**, 95% CI 158 to 201; availability 64.7% → 68.3% |
-| Sum of the 20 individual values | +219. The joint value is lower because actions overlap |
-| Aircraft-days waiting for parts saved | 247 |
-| **Fresh-future check** (12 futures not used to choose the plan) | **+144 weighted aircraft-days**; availability 63.8% → 66.6%; 201 fewer aircraft-days waiting for parts |
-| Cost of waiting, all 20 pending | ≈12 aircraft-days lost per day of delay |
+| Cost | ₹29.7 lakh (budget ₹50 lakh) |
+| **Plan value, 90 days** (joint, on the 24 futures used to choose it) | **+177 weighted aircraft-days**, 95% CI 157 to 197; availability 64.8% → 68.2% |
+| Sum of the 20 individual values | +218. The joint value is lower because actions overlap |
+| Aircraft-days waiting for parts saved | 237 |
+| **Fresh-future check** (12 futures not used to choose the plan) | **+128 weighted aircraft-days**; availability 63.8% → 66.3%; 178 fewer aircraft-days waiting for parts |
+| Cost of waiting, all 20 pending | ≈15 aircraft-days lost per day of delay |
 
 ![Whole plan vs today's procedures, 12 fresh futures](img/desk_outcome.png)
 
 **The honest reading:**
 1. **The plan buys time, not a new steady state.** Availability jumps in the first two weeks, as aircraft fly on cannibalised, transferred and expedited parts. The two lines converge by month 2, because the parts were arriving anyway. Lasting gains need what Milestone 1 measured: routing, the priced spares portfolio and rogue quarantine.
-2. **Winner's curse.** On the futures used to choose the plan it is worth +180. On fresh futures it is worth +144, about 20% less. Choosing the best of 89 noisy estimates inflates the winners. The console's outcome check always uses fresh futures, and anyone using the +180 figure should quote the +144 next to it.
+2. **Winner's curse.** On the futures used to choose the plan it is worth +177. On fresh futures it is worth +128, about 28% less. Choosing the best of 89 noisy estimates inflates the winners. The console's outcome check always uses fresh futures, and anyone using the +177 figure should quote the +128 next to it. Milestone 4's operations clock measures the realised gain on identical events (docs/07).
 3. **Expediting dominates**, because Russian-sourced repairs carry long shipping and customs legs. In the synthetic world, OEM-RU repairs take about 40–50 days to return; expediting brings some back in 5–14 days. Whether premium freight can really cut those legs is an assumption to validate with logistics staff.
 4. **No repair-priority actions today.** No agency had a queue when the records end, so there was nothing to re-order. The action type is built and tested, and it will show up when queues form, e.g. under a supply shock.
 5. **The baseline is today's procedures (P0):** no routine lateral transfers and first-in-first-out repair queues. Under the fully automated NIRANTAR policy (P3), some of these actions would already happen by rule, and their marginal value would be smaller.

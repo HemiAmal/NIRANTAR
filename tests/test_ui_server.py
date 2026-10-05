@@ -122,3 +122,33 @@ def test_plan_build_decide_and_outcome(console_url):
     assert code == 200 and o["n_actions"] == 1
     assert post(url + "/api/plan/outcome", {"which": "everything"})[0] == 400
     assert json.loads(get(url + "/api/ledger")[1])["failed"] == []
+
+
+def test_clock_applies_approved_actions_and_retires_the_old_plan(console_url):
+    import time
+    url, console = console_url
+    v = json.loads(get(url + "/api/plan")[1])
+    assert v["state"]["status"] == "ready"
+    plan_id = v["plan"]["plan_id"]
+    approved = [it for it in v["plan"]["items"] if it["decision"] and it["decision"]["verdict"] == "accept"]
+    assert approved                                    # from the previous test
+    pending = next((it for it in v["plan"]["items"] if it["decision"] is None), None)
+    assert post(url + "/api/clock/advance", {"days": 3})[0] == 400       # only 1 or 7
+    code, c = post(url + "/api/clock/advance", {"days": 1})
+    assert code == 200 and c["day"] == 1 and len(c["applied"]) == len(approved) and len(c["log"]) == 1
+    executions = [e for e in console.ledger.entries if e["kind"] == "execution"]
+    assert {e["payload"]["recommendation_seq"] for e in executions} >= {it["ledger_seq"] for it in approved}
+    for _ in range(240):                               # a new plan for day 1 is prepared in the background
+        v = json.loads(get(url + "/api/plan")[1])
+        if v["state"]["status"] in ("ready", "error"):
+            break
+        time.sleep(0.5)
+    assert v["state"]["status"] == "ready" and v["day"] == 1 and v["plan"]["plan_id"] != plan_id
+    if pending:
+        role = next(r for r in v["roles"] if r.split(" ")[0] in pending["authority"])
+        assert post(url + "/api/decision", {"ledger_seq": pending["ledger_seq"], "verdict": "accept",
+                                            "role": role, "reason_code": "MRV_CI_POSITIVE"})[0] == 400
+    code, c = post(url + "/api/clock/reset", {})
+    assert code == 200 and c["day"] == 0 and c["log"] == []
+    assert json.loads(get(url + "/api/plan")[1])["plan"]["plan_id"] == plan_id
+    assert json.loads(get(url + "/api/ledger")[1])["failed"] == []

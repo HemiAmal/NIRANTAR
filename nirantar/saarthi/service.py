@@ -24,7 +24,7 @@ ENV_LABELS = {"coastal_saline": "coastal saline", "desert_dust": "desert dust",
 
 class SaarthiDesk:
     def __init__(self, world: World, snapshot: dict, frailty: pd.DataFrame, rogue_flags: set[int],
-                 signal_table: list[dict], ledger: Ledger, signer: Signer):
+                 signal_table: list[dict], ledger: Ledger, signer: Signer, day: int = 0):
         self.w = world
         self.x = Extractor(world)
         self.installed = copy.deepcopy(snapshot["installed"])          # tail -> {(pn, slot): serial}
@@ -35,9 +35,10 @@ class SaarthiDesk:
         fr = frailty.set_index("serial") if len(frailty) else frailty
         self.p_rogue = {int(s): (float(r["p_rogue"]), int(r["n_fail"])) for s, r in fr.iterrows()} if len(fr) else {}
         self.signals = {(r["family"], r["env"], r["mode"]): r for r in signal_table}
+        self.day = day
         self.entries: list[dict] = []
-        for e in ledger.entries:                     # roll the state forward from earlier sessions
-            if e["kind"] == "snag_entry":
+        for e in ledger.entries:                     # roll today's state forward from earlier sessions
+            if e["kind"] == "snag_entry" and e["payload"].get("day", 0) == day:
                 self._apply(e["payload"])
                 self.entries.append(self._summary(e))
 
@@ -279,7 +280,7 @@ class SaarthiDesk:
             "entry_seconds": secs,
             "edited_fields": [str(x)[:16] for x in (body.get("edited_fields") or [])][:8],
             "checks": [{"id": c["id"], "status": c["status"]} for c in res["checks"]],
-            "extractor": EXTRACTOR_VERSION,
+            "extractor": EXTRACTOR_VERSION, "day": self.day,
         }
         e = self.ledger.append("snag_entry", payload, self.signer)
         self._apply(payload)

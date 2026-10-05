@@ -103,6 +103,22 @@
       decision is signed into the ledger. NIRANTAR never grounds or releases an aircraft.</p>
     <div id="plan-status" class="muted" role="status"></div>
     <div class="tiles" id="desk-tiles"></div>
+    <div class="card" id="clock-card">
+      <div class="row-between">
+        <h3 id="clock-title">Operations clock</h3>
+        <div class="btns">
+          <button class="primary" id="adv1" type="button">Advance 1 day</button>
+          <button class="ghost" id="adv7" type="button">Advance 7 days</button>
+          <button class="ghost" id="clock-reset" type="button">Reset to day 0</button>
+        </div>
+      </div>
+      <p class="hint">Approved actions are applied when the clock advances. A shadow fleet meets exactly the same failures,
+        repair times and supply conditions but takes no decisions, so the gap between the two lines is what the decisions bought.</p>
+      <div class="tiles" id="clock-tiles"></div>
+      <div class="legend" id="clock-legend"></div>
+      <div class="chart" id="clock-chart"></div>
+      <details id="clock-log"><summary>Station log</summary><ul class="events" id="clock-events"></ul></details>
+    </div>
     <div class="card">
       <div class="row-between"><h3>Base readiness board</h3>
         <div class="seg" id="base-seg" role="radiogroup" aria-label="Base"></div></div>
