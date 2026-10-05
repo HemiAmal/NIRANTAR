@@ -125,6 +125,7 @@ class Ledger:
     def append(self, kind: str, payload: dict, signer: Signer) -> dict:
         self.register(signer)
         prev = self.entries[-1]["entry_hash"] if self.entries else "0" * 64
+        payload = json.loads(canonical(payload))       # private copy: callers cannot alter a signed entry
         body = {"seq": len(self.entries), "ts": time.time(), "kind": kind, "actor": signer.actor,
                 "actor_key": signer.public_b64, "payload": payload, "prev_hash": prev}
         data = canonical(body)

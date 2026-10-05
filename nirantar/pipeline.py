@@ -25,7 +25,7 @@ from nirantar.chitragupta.ledger import Ledger, Signer
 from nirantar.dhanvantari.tier_c import TierCModel, fit_tier_c
 from nirantar.drishti.signals import disproportionality, exposure_rates
 from nirantar.records import to_frames
-from nirantar.sanjaya.ensemble import P0, P1, P2, P3, run_ensemble, summarise
+from nirantar.sanjaya.ensemble import P0, P1, P2, P3, fan_chart, run_ensemble, summarise
 from nirantar.sanjaya.twin import SUPPLY_SHOCK, Scenario, Twin
 from nirantar.satya.quality import check_spells, clean, dq_scores, evidence_grade
 from nirantar.sushruta.agency import agency_scorecards, flag_rogues, serial_frailty
@@ -133,10 +133,13 @@ def run(cfg: Config = Config(), log=print) -> Outputs:
         (P3, smart),
     ]
     experiment = []
+    fans: dict[str, dict] = {}
     base_waad = {}
     for scen in (Scenario(), SUPPLY_SHOCK):
         for pol, acts in arms:
             res = run_ensemble(world, pol, cfg.horizon_days, seeds, scen, acts, dm, start)
+            if pol.name in (P0.name, P3.name):
+                fans.setdefault(scen.name, {})[pol.name] = fan_payload(res)
             s = summarise(res)
             waad = np.array([r.waad for r in res])
             if pol.name == P0.name:
@@ -170,6 +173,7 @@ def run(cfg: Config = Config(), log=print) -> Outputs:
         row["evidence_grade"] = ev.grade
         row["authority"] = "Logistics officer" if ev.grade in ("E1", "E2") else "Logistics + CEngO"
         rec = ledger.append("recommendation", row, node)
+        row["ledger_seq"] = rec["seq"]
         decision = "accept" if (r.ci95[0] > 0 and ev.grade in ("E1", "E2", "E3")) else "defer"
         ledger.append("decision", {"recommendation_seq": rec["seq"], "verdict": decision,
                                    "reason_code": "MRV_CI_POSITIVE" if decision == "accept" else "UNCERTAIN"}, officer)
@@ -203,19 +207,51 @@ def run(cfg: Config = Config(), log=print) -> Outputs:
                     "candidates": sorted(map(list, found_cand)),
                     "planted_found_as_signal": len(found_sig & planted),
                     "planted_found_as_candidate": len(found_cand & planted),
-                    "false_signals": len(found_sig - planted)},
+                    "false_signals": len(found_sig - planted),
+                    "table": sig.to_dict("records") if len(sig) else []},
         "portfolios": {"status_quo": [a.label() for a in cons], "chanakya": [a.label() for a in smart]},
         "experiment": experiment,
+        "fan": fans,
         "opportunities": opp_rows,
         "cost_of_delay": cod,
         "indigenisation": indig.to_dict("records"),
         "ledger": {"entries": len(ledger.entries), "tree_head": sth, "verify_all": ledger.verify_all(sth)},
     }
-    (out_dir / "milestone1_report.json").write_text(json.dumps(report, indent=2, default=str))
+    report = clean_json(report)
+    (out_dir / "milestone1_report.json").write_text(json.dumps(report, indent=2, default=str, allow_nan=False))
     md = render_markdown(report)
     (out_dir / "milestone1_report.md").write_text(md)
     log(f"Done in {report['runtime_s']} s -> {out_dir}/milestone1_report.md")
     return Outputs(report, md)
+
+
+def clean_json(obj):
+    """Make an object strict-JSON safe: NaN/inf -> None, numpy scalars -> Python, tuples -> lists."""
+    if isinstance(obj, dict):
+        return {str(k): clean_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [clean_json(v) for v in obj]
+    if isinstance(obj, (np.floating, float)):
+        f = float(obj)
+        return f if np.isfinite(f) else None
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    return obj
+
+
+def fan_payload(results, step: int = 7) -> dict:
+    """Weekly P10/P50/P90 of whole-force daily availability, plus per-fleet medians."""
+    q = fan_chart(results)
+    days = list(range(0, len(q[0.5]), step))
+    out = {"day": days, "p10": [round(float(q[0.1][d]), 4) for d in days],
+           "p50": [round(float(q[0.5][d]), 4) for d in days],
+           "p90": [round(float(q[0.9][d]), 4) for d in days]}
+    for fleet in results[0].fleet_daily_availability:
+        med = fan_chart(results, fleet, quantiles=(0.5,))[0.5]
+        out[f"p50_{fleet}"] = [round(float(med[d]), 4) for d in days]
+    return out
 
 
 def _table(rows: list[dict], cols: list[str]) -> str:
