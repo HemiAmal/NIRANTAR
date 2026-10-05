@@ -14,7 +14,7 @@ from nirantar.ui.server import Console, make_handler
 def console_url(tmp_path_factory):
     out = tmp_path_factory.mktemp("results")
     run(Config(history_days=730, n_seeds=2, mrv_seeds=2, top_k=2, out_dir=str(out)), log=lambda *_: None)
-    console = Console(out)
+    console = Console(out, plan_kwargs={"n_seeds": 4, "n_screen": 2, "workers": 1})
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(console))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_address[1]}", console
@@ -92,4 +92,33 @@ def test_saarthi_endpoints(console_url):
     assert post(url + "/api/saarthi/confirm", {"fields": {"tail": "FI-B1-07"}})[0] == 400
     assert post(url + "/api/saarthi/check", {"fields": "nope"})[0] == 400
     assert post(url + "/api/saarthi/parse", [1, 2])[0] == 400
+    assert json.loads(get(url + "/api/ledger")[1])["failed"] == []
+
+
+def test_plan_build_decide_and_outcome(console_url):
+    import time
+    url, _ = console_url
+    v = json.loads(get(url + "/api/plan")[1])
+    if v["state"]["status"] != "ready":
+        assert post(url + "/api/plan/build", {})[0] == 200
+        for _ in range(240):
+            v = json.loads(get(url + "/api/plan")[1])
+            if v["state"]["status"] in ("ready", "error"):
+                break
+            time.sleep(0.5)
+    assert v["state"]["status"] == "ready", v["state"]
+    item = v["plan"]["items"][0]
+    role = next(r for r in v["roles"] if r.split(" ")[0] in item["authority"])
+    other = next(r for r in v["roles"] if r.split(" ")[0] not in item["authority"])
+    seq = item["ledger_seq"]
+    assert post(url + "/api/decision", {"ledger_seq": seq, "verdict": "accept", "role": other,
+                                        "reason_code": "MRV_CI_POSITIVE"})[0] == 400
+    code, r = post(url + "/api/decision", {"ledger_seq": seq, "verdict": "accept", "role": role,
+                                           "reason_code": "MRV_CI_POSITIVE"})
+    assert code == 200
+    v = json.loads(get(url + "/api/plan")[1])
+    assert v["summary"]["approved"] == 1
+    code, o = post(url + "/api/plan/outcome", {"which": "approved"})
+    assert code == 200 and o["n_actions"] == 1
+    assert post(url + "/api/plan/outcome", {"which": "everything"})[0] == 400
     assert json.loads(get(url + "/api/ledger")[1])["failed"] == []

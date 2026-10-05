@@ -14,15 +14,17 @@ A proposed sovereign decision platform for military aircraft predictive maintena
 | 3 | [NIRANTAR Proposed Solution](docs/03_NIRANTAR_PROPOSED_SOLUTION.md) | The proposed solution: readiness-as-a-currency (Marginal Readiness Value), Sustainment Digital Twin with Readiness-at-Risk, Truth & Trust stack, 14 modules, maths, governance (ETAI), security, synthetic-data strategy (BHARAT-FLEET), hackathon MVP, validation plan, roadmap, ROI, pitch and Q&A |
 | 4 | [Milestone 1: Engine Core](docs/04_MILESTONE_1_ENGINE.md) | What is built so far, how to run it, results on synthetic data, honest findings and limitations |
 | 5 | [Milestone 2: SAARTHI snag entry](docs/05_MILESTONE_2_SAARTHI.md) | Speak or type a snag in Hindi, Hinglish or English; schema-constrained extraction, checks against the records, signed entries; accuracy and limits |
+| 6 | [Milestone 3: Decision desk](docs/06_MILESTONE_3_DECISION_DESK.md) | Today's fleet board, a priced plan (cannibalisation, transfer, expedite, purchase), approvals by the right authority signed into the ledger, fresh-future check |
 
 ## Development
 
 ```bash
 python -m pip install -e ".[dev]"  # numpy, scipy, pandas, cryptography, pytest
-python -m pytest -q                # 68 tests
+python -m pytest -q                # 79 tests
 python -m nirantar demo --quick    # ~15 s end-to-end run
 python -m nirantar demo            # full run -> experiments/results/milestone1_report.md
 python -m nirantar serve           # web console -> http://127.0.0.1:8050
+python -m nirantar plan            # prepare today's decision-desk plan
 python -m nirantar saarthi-eval    # SAARTHI extractor benchmark
 ```
 
@@ -37,9 +39,9 @@ On Windows machines where an Application Control policy blocks `pip.exe` or `pyt
 | `nirantar/drishti` | DRISHTI | Airworthiness pharmacovigilance signals |
 | `nirantar/satya` | SATYA | Data-quality invariants, Evidence Grades |
 | `nirantar/chitragupta` | CHITRAGUPTA | Signed Merkle evidence ledger |
-| `nirantar/chanakya` | CHANAKYA | Marginal Readiness Value, Cost-of-Delay, portfolios |
+| `nirantar/chanakya` | CHANAKYA | Marginal Readiness Value, Cost-of-Delay, portfolios, decision desk |
 | `nirantar/vishwakarma` | VISHWAKARMA | Readiness-weighted indigenisation ranking |
 | `nirantar/saarthi` | SAARTHI | Voice/text snag entry: Hindi, Hinglish, English to a checked, signed record |
-| `nirantar/ui` | Console | Offline web console: readiness room, live what-if, SAARTHI snag entry, opportunities, agencies, signals, indigenisation, ledger |
+| `nirantar/ui` | Console | Offline web console: readiness room, live what-if, decision desk, SAARTHI snag entry, opportunities, agencies, signals, indigenisation, ledger |
 
 All data in this repository is synthetic. No number is an IAF result.

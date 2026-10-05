@@ -1,4 +1,4 @@
-"""Command line: python -m nirantar demo [--quick] [--out DIR] | serve [--port 8050] | saarthi-eval"""
+"""Command line: python -m nirantar demo [--quick] [--out DIR] | serve [--port 8050] | plan | saarthi-eval"""
 from __future__ import annotations
 
 import argparse
@@ -17,11 +17,24 @@ def main() -> None:
     sv.add_argument("--results", default="experiments/results")
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8050)
+    pl = sub.add_parser("plan", help="prepare today's decision-desk plan (signed into the ledger)")
+    pl.add_argument("--results", default="experiments/results")
+    pl.add_argument("--workers", type=int, default=None, help="processes for pricing (default: CPU count, max 8)")
     ev = sub.add_parser("saarthi-eval", help="score the SAARTHI snag extractor on synthetic utterances")
     ev.add_argument("--n", type=int, default=900)
     ev.add_argument("--seed", type=int, default=0)
     ev.add_argument("--out", default="experiments/results")
     args = ap.parse_args()
+    if args.cmd == "plan":
+        from nirantar.ui.server import Console
+        console = Console(args.results, plan_kwargs={"workers": args.workers})
+        desk = console.planner()
+        plan = desk.build(log=print)
+        j = plan["joint"] or {}
+        print(f"{plan['plan_id']}: {len(plan['items'])} actions from {plan['n_candidates']} candidates, "
+              f"cost {plan['cost_lakh']} lakh, value {j.get('mrv')} wAAD {j.get('ci95')} over "
+              f"{plan['horizon_days']} days, {plan['runtime_s']} s -> {desk.path}")
+        return
     if args.cmd == "saarthi-eval":
         import json
         from pathlib import Path

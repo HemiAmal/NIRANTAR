@@ -5,3 +5,6 @@ __pycache__/
 build/
 dist/
 .venv/
+
+# signing keys of local console nodes (never commit private keys)
+*.key

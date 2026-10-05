@@ -88,6 +88,22 @@ class Signer:
     def generate(cls, actor: str) -> "Signer":
         return cls(actor, Ed25519PrivateKey.generate())
 
+    @classmethod
+    def load_or_create(cls, path: str | Path, prefix: str) -> "Signer":
+        """A node's long-lived key, kept in ``path``; the actor name carries the key's fingerprint
+        so two nodes (or a node whose key was replaced) never share a name."""
+        path = Path(path)
+        if path.exists():
+            key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(path.read_text().strip()))
+        else:
+            key = Ed25519PrivateKey.generate()
+            raw = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
+                                    serialization.NoEncryption())
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(base64.b64encode(raw).decode())
+        pub = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        return cls(f"{prefix}@{hashlib.sha256(pub).hexdigest()[:8]}", key)
+
     @property
     def public_b64(self) -> str:
         raw = self.key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
@@ -120,6 +136,10 @@ class Ledger:
                     self.keys.setdefault(e["actor"], e["actor_key"])
 
     def register(self, signer: Signer) -> None:
+        known = self.keys.get(signer.actor)
+        if known is not None and known != signer.public_b64:
+            # silently re-keying an actor would make all its earlier entries fail verification
+            raise ValueError(f"signer {signer.actor!r} is already in the ledger with a different key")
         self.keys[signer.actor] = signer.public_b64
 
     def append(self, kind: str, payload: dict, signer: Signer) -> dict:
