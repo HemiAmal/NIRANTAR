@@ -95,7 +95,8 @@ function fanChart(container, series) {
     el("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, s).textContent = Math.round(t * 100) + "%";
   }
   el("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, class: "axis" }, s);
-  const months = Math.round(maxDay / 30.4), narrow = W < 600, stepMo = narrow ? (months > 12 ? 6 : 3) : (months > 12 ? 4 : 2);
+  const months = Math.round(maxDay / 30.4), narrow = W < 600,
+    stepMo = months <= 4 ? 1 : narrow ? (months > 12 ? 6 : 3) : (months > 12 ? 4 : 2);
   for (let mo = 0; mo <= months; mo += stepMo) {
     const d = Math.min(mo * 30.4, maxDay);
     el("text", { x: X(d), y: H - m.b + 18, "text-anchor": mo === 0 ? "start" : mo >= months ? "end" : "middle" }, s)
@@ -395,6 +396,199 @@ async function runSim(ev) {
   } finally { btn.disabled = false; }
 }
 
+// ------------------------------------------------------------ CHANAKYA decision desk
+const DK = { view: null, base: "All", poll: null, outcome: null };
+const REASON_LABEL = {
+  MRV_CI_POSITIVE: "Approve: value clearly positive", OPERATIONAL_NEED: "Approve: operational need",
+  AWAITING_FUNDS: "Defer: awaiting funds", NEED_MORE_INFO: "Defer: need more information", TRANSPORT_UNAVAILABLE: "Defer: no transport",
+  OPERATIONAL_REASON: "Reject: operational reason", DATA_DOUBT: "Reject: doubt the data", SAFETY_CONCERN: "Reject: safety concern",
+  DONOR_NEEDED_ELSEWHERE: "Reject: donor needed elsewhere",
+};
+const VERDICT_WORD = { accept: ["good", "Approved"], defer: ["warning", "Deferred"], reject: ["critical", "Rejected"] };
+const storeGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+const storeSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
+
+async function loadPlan() {
+  DK.view = await api("/api/plan");
+  const st = DK.view.state;
+  if (st.status === "building") {
+    const pctDone = Math.round(((st.i || 0) / 4) * 100);
+    $("#plan-status").innerHTML = `Preparing the plan: ${esc(st.step)}…<div class="progress"><i style="width:${pctDone}%"></i></div>`;
+    $("#replan-btn").disabled = true;
+    clearTimeout(DK.poll); DK.poll = setTimeout(loadPlan, 1000);
+  } else {
+    $("#replan-btn").disabled = false;
+    if (st.status === "error") $("#plan-status").textContent = "Planning failed: " + st.error;
+  }
+  if (DK.view.plan) renderDesk();
+  else if (st.status !== "building") $("#plan-status").textContent = "No plan yet. Press “Re-plan now” (about 20–60 s).";
+}
+
+function canDecide(item, role) {
+  return item.authority.includes(role) || item.authority.includes(role.split(" ")[0]);
+}
+
+function renderDesk() {
+  const v = DK.view, P = v.plan, brd = P.board, base = DK.base;
+  const inBase = (b) => base === "All" || b === base;
+  if (v.state.status !== "building") {
+    $("#plan-status").textContent = `${P.plan_id} · prepared ${new Date(P.created * 1000).toLocaleString()} · ` +
+      `${P.n_candidates} candidate actions priced on ${P.seeds} paired futures over ${P.horizon_days} days against today's procedures.`;
+  }
+  // tiles
+  const tails = brd.tails, down = tails.filter((t) => t.status === "NMCS").length, maint = tails.filter((t) => t.status === "NMCM").length;
+  const j = P.joint || {}, s = v.summary;
+  $("#desk-tiles").innerHTML = [
+    tile({ label: "Aircraft waiting for parts now", value: `${down}<span class="muted" style="font-size:16px"> / ${tails.length}</span>`,
+      delta: `${maint} more in maintenance` }),
+    tile({ label: `Plan value, next ${P.horizon_days} days`, value: j.mrv != null ? signed(j.mrv) : "–", hero: false,
+      delta: j.mrv != null ? `weighted aircraft-days · 95% CI ${fmt(j.ci95[0])}–${fmt(j.ci95[1])} · availability ${pct(j.availability_today_procedures)} → ${pct(j.availability_with_plan)}` : "", up: j.mrv > 0 }),
+    tile({ label: "Plan cost", value: `₹${fmt(P.cost_lakh, 1)} lakh`, delta: `${P.items.length} actions · budget ₹${fmt(P.budget_lakh)} lakh` }),
+    tile({ label: "Awaiting a decision", value: fmt(s.pending), delta: s.pending ? `waiting costs ≈${fmt(s.pending_cod_per_day, 1)} aircraft-days per day` : `${s.approved} approved · ${s.rejected} rejected` }),
+  ].join("");
+
+  // base selector
+  const bases = ["All", ...new Set(tails.map((t) => t.base))].sort((a, b) => (a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b)));
+  $("#base-seg").innerHTML = bases.map((b) => `<button role="radio" aria-checked="${b === base}" data-base="${esc(b)}">${b === "All" ? "All bases" : esc(b)}</button>`).join("");
+  $("#base-seg").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { DK.base = b.dataset.base; renderDesk(); }));
+
+  // fleet status per base
+  const groups = {};
+  for (const t of tails) if (inBase(t.base)) {
+    const k = t.base + "|" + t.fleet; groups[k] = groups[k] || { base: t.base, fleet: t.fleet, MC: 0, NMCM: 0, NMCS: 0 }; groups[k][t.status]++;
+  }
+  const FLEET = { FighterH: "Heavy fighter", HeloU: "Utility helicopter" };
+  $("#fleet-status").innerHTML = `<table><thead><tr><th>Base</th><th>Fleet</th><th class="num">Ready</th><th class="num">In maintenance</th>
+    <th class="num">Waiting for parts</th><th class="num">Available now</th></tr></thead><tbody>` +
+    Object.values(groups).sort((a, b) => (a.base + a.fleet).localeCompare(b.base + b.fleet)).map((g) => {
+      const n = g.MC + g.NMCM + g.NMCS;
+      return `<tr><td>${esc(g.base)}</td><td>${esc(FLEET[g.fleet] || g.fleet)}</td><td class="num">${g.MC}</td><td class="num">${g.NMCM}</td>
+        <td class="num">${g.NMCS}</td><td class="num">${pct(g.MC / n, 0)}</td></tr>`;
+    }).join("") + "</tbody></table>";
+
+  // AOG table with the plan's fix for each aircraft
+  const fixFor = (t, w) => P.items.filter((it) => (it.kind === "cann" && it.tail === t.id) ||
+    (it.kind !== "cann" && it.base === t.base && it.pn === w.pn));
+  const aog = tails.filter((t) => t.status === "NMCS" && inBase(t.base))
+    .flatMap((t) => t.waiting.map((w) => ({ t, w }))).sort((a, b) => b.w.days - a.w.days);
+  $("#aog-table").innerHTML = aog.length ? `<table><thead><tr><th>Aircraft</th><th>Waiting for</th><th class="num">Waited</th>
+    <th>Expected back without action</th><th>In today's plan</th></tr></thead><tbody>` + aog.map(({ t, w }) => {
+      const fixes = fixFor(t, w);
+      const grouped = {};
+      for (const it of fixes) {
+        const d = it.decision, key = it.kind_label + "|" + (d ? d.verdict : "");
+        grouped[key] = (grouped[key] || 0) + 1;
+      }
+      const fixTxt = fixes.length ? Object.entries(grouped).map(([key, n]) => {
+        const [label, verdict] = key.split("|"), st = verdict ? VERDICT_WORD[verdict] : null;
+        return `<div>${esc(label)}${n > 1 ? ` ×${n}` : ""}${st ? " " + badge(st[0], st[1]) : ""}</div>`;
+      }).join("") : `<span class="muted">–</span>`;
+      return `<tr><td>${esc(t.id)}</td><td>${esc(w.name)}${w.pos ? " · pos " + w.pos : ""}</td><td class="num">${w.days < 1 ? "<1" : fmt(w.days)} d</td>
+        <td>${w.eta != null ? `${w.eta < 1 ? "<1" : "~" + fmt(w.eta)} d <span class="small">(${esc(w.eta_source)})</span>` : `<span class="small">${esc(w.eta_source)}</span>`}</td>
+        <td>${fixTxt}</td></tr>`;
+    }).join("") + "</tbody></table>" : `<p class="muted">No aircraft waiting for parts${base === "All" ? "" : " at " + esc(base)}.</p>`;
+
+  // 7-day risk
+  const risky = tails.filter((t) => t.status === "MC" && inBase(t.base)).sort((a, b) => b.risk7 - a.risk7).slice(0, 8);
+  if (risky.length) hBars($("#risk-bars"), risky.map((t) => ({ label: `${t.id} · ${t.risk_part}`, value: t.risk7 * 100 })),
+    { unit: "%", digits: 0, tipFn: (r) => `<div class="t">${esc(r.label)}</div>Chance of a new failure within 7 days: <b>${fmt(r.value)}%</b>` });
+  else $("#risk-bars").innerHTML = `<p class="muted">No serviceable aircraft here.</p>`;
+
+  // plan table
+  const role = $("#role").value;
+  const items = P.items.map((it, i) => ({ ...it, n: i + 1 })).filter((it) => inBase(it.base));
+  $("#plan-hint").textContent = `Ranked by value. Value = change in weighted aircraft-available-days over ${P.horizon_days} days vs today's procedures; ` +
+    `the plan's joint value (${j.mrv != null ? signed(j.mrv) : "–"}) is below the sum of its parts (${j.sum_of_parts != null ? signed(j.sum_of_parts) : "–"}) because actions overlap.`;
+  const reasonOpts = Object.entries(v.reasons).map(([verdict, codes]) => codes.map((c) => `<option value="${verdict}|${c}">${esc(REASON_LABEL[c] || c)}</option>`).join("")).join("");
+  $("#plan-table").innerHTML = items.length ? `<table class="plan"><thead><tr><th class="num">#</th><th>Action and why</th><th class="num">Value (wAAD)</th>
+    <th class="num">Cost (₹ lakh)</th><th class="num">Delay cost / day</th><th>Evidence · approver</th><th>Decision</th></tr></thead><tbody>` +
+    items.map((it) => {
+      const [lvl, txt] = GRADE[it.grade] || ["neutral", it.grade];
+      const d = it.decision;
+      let cell;
+      if (d && d.verdict !== "defer") {
+        const [l, w] = VERDICT_WORD[d.verdict];
+        cell = `${badge(l, w)}<div class="small">${esc(d.role || "")} · ${esc(REASON_LABEL[d.reason_code] || d.reason_code)} · #${d.seq}</div>`;
+      } else if (!canDecide(it, role)) {
+        cell = `${d ? badge("warning", "Deferred") : ""}<div class="needs">Needs ${esc(it.authority)}</div>`;
+      } else {
+        cell = `${d ? badge("warning", "Deferred") : ""}<div class="sign" data-seq="${it.ledger_seq}">
+          <select aria-label="Decision for action ${it.n}"><option value="">Choose…</option>${reasonOpts}</select><button type="button">Sign</button></div>`;
+      }
+      const cod = it.cod_per_day != null ? (Math.abs(it.cod_per_day) < 0.1 ? "≈0" : fmt(it.cod_per_day, 1)) : "–";
+      return `<tr><td class="num">${it.n}</td>
+        <td class="act"><span class="kind">${esc(it.kind_label)}</span><div class="act-text">${esc(it.text)}</div>
+          <div class="small">${esc(it.reason)}</div>
+          <details class="why"><summary>What the simulation shows</summary><div class="small">${esc(it.explanation)}</div></details></td>
+        <td class="num"><b>${signed(it.mrv, 1)}</b><div class="small">CI ${fmt(it.ci95[0], 1)} to ${fmt(it.ci95[1], 1)}</div>
+          <div class="small">helps in ${Math.round(it.p_positive * 100)}% of futures</div></td>
+        <td class="num">${fmt(it.cost_lakh, 1)}</td><td class="num">${cod}</td>
+        <td>${badge(lvl, "Data " + txt)}<div class="small" style="margin-top:4px">${esc(it.authority)}</div></td><td>${cell}</td></tr>`;
+    }).join("") + "</tbody></table>" : `<p class="muted">No plan actions${base === "All" ? "" : " for " + esc(base)}.</p>`;
+  $("#plan-table").querySelectorAll(".sign button").forEach((b) => b.addEventListener("click", async () => {
+    const box = b.parentElement, val = box.querySelector("select").value;
+    if (!val) { toast("Choose a decision and reason first"); return; }
+    const [verdict, reason] = val.split("|");
+    b.disabled = true;
+    try {
+      const r = await api("/api/decision", { ledger_seq: +box.dataset.seq, verdict, reason_code: reason, role: $("#role").value });
+      toast(`${VERDICT_WORD[verdict][1]}: signed into the ledger as entry #${r.seq}`);
+      S.ledger = await api("/api/ledger");
+      await loadPlan();
+    } catch (e) { toast("Not signed: " + e.message); b.disabled = false; }
+  }));
+
+  // not selected
+  const ns = P.not_selected.filter((it) => inBase(it.base));
+  $("#ns-summary").textContent = `Considered but not selected (${ns.length})`;
+  $("#ns-table").innerHTML = `<table><thead><tr><th>Action</th><th class="num">Value</th><th class="num">95% CI</th><th class="num">Futures it helps</th><th>Why not</th></tr></thead><tbody>` +
+    ns.map((it) => `<tr><td><span class="kind">${esc(it.kind_label)}</span><div>${esc(it.text)}</div></td><td class="num">${signed(it.mrv, 1)}</td>
+      <td class="num">${fmt(it.ci95[0], 1)} to ${fmt(it.ci95[1], 1)}</td><td class="num">${Math.round(it.p_positive * 100)}%</td><td>${esc(it.not_selected)}</td></tr>`).join("") +
+    "</tbody></table>";
+  if (DK.outcome) renderOutcome();
+}
+
+async function runOutcome(which) {
+  const btns = [$("#outcome-btn"), $("#outcome-all-btn")];
+  btns.forEach((b) => (b.disabled = true));
+  $("#outcome-summary").textContent = "Simulating…";
+  try {
+    DK.outcome = await api("/api/plan/outcome", { which });
+    renderOutcome();
+  } catch (e) { $("#outcome-summary").textContent = "Error: " + e.message; }
+  finally { btns.forEach((b) => (b.disabled = false)); }
+}
+function renderOutcome() {
+  const o = DK.outcome;
+  const label = o.which === "all" ? "With the whole plan" : "With approved actions";
+  const series = [{ name: "Today's procedures", color: "--series-2", wash: "--series-2-wash", data: o.fan_base },
+    { name: label, color: "--series-1", wash: "--series-1-wash", data: o.fan_plan }];
+  legend($("#outcome-legend"), series.slice().reverse().map((x) => ({ label: x.name, color: x.color })));
+  fanChart($("#outcome-fan"), series);
+  $("#outcome-summary").innerHTML = o.n_actions === 0 ? "No actions approved yet: both lines are today's procedures. Approve actions above, or simulate the whole plan."
+    : `${o.n_actions} action${o.n_actions > 1 ? "s" : ""} · ${o.seeds} paired futures: mean availability <b>${pct(o.availability_plan)}</b> vs <b>${pct(o.availability_base)}</b>
+      with today's procedures; <b>${signed(o.waad_gain)}</b> weighted aircraft-days and <b>${fmt(o.nmcs_days_saved)}</b> fewer aircraft-days waiting for parts.`;
+}
+
+async function renderDeskTab() {
+  if (!DK.view) {
+    const roleSel = $("#role");
+    try {
+      await loadPlan();
+    } catch (e) { $("#plan-status").textContent = "Could not load the plan: " + e.message; return; }
+    roleSel.innerHTML = DK.view.roles.map((r) => `<option>${esc(r)}</option>`).join("");
+    roleSel.value = storeGet("nirantar-role", DK.view.roles[0]);
+    roleSel.addEventListener("change", () => { storeSet("nirantar-role", roleSel.value); if (DK.view.plan) renderDesk(); });
+    $("#replan-btn").addEventListener("click", async () => {
+      try { await api("/api/plan/build", {}); DK.outcome = null; $("#outcome-fan").innerHTML = ""; $("#outcome-legend").innerHTML = ""; $("#outcome-summary").textContent = ""; loadPlan(); }
+      catch (e) { toast(e.message); }
+    });
+    $("#outcome-btn").addEventListener("click", () => runOutcome("approved"));
+    $("#outcome-all-btn").addEventListener("click", () => runOutcome("all"));
+    if (DK.view.plan) renderDesk();
+  } else if (DK.view.plan) renderDesk();
+}
+
 // ------------------------------------------------------------ SAARTHI snag entry
 const SN = { opts: null, fields: null, prov: {}, heard: {}, errors: {}, choices: {}, edited: new Set(), findings: [],
   t0: null, input: "typed", lang: "", transcript: "", res: null, timer: null, entries: null };
@@ -657,7 +851,7 @@ function selectTab(name) {
 }
 function renderAll() {
   const active = document.querySelector(".tabs button[aria-selected='true']").dataset.tab;
-  ({ readiness: renderReadiness, saarthi: renderSaarthi, opportunities: renderOpportunities, agencies: renderAgencies, signals: renderSignals,
+  ({ readiness: renderReadiness, desk: renderDeskTab, saarthi: renderSaarthi, opportunities: renderOpportunities, agencies: renderAgencies, signals: renderSignals,
      indigenisation: renderIndigenisation, ledger: renderLedger })[active]();
 }
 
@@ -669,9 +863,9 @@ async function init() {
     return;
   }
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
-  document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#scen-seg button").forEach((b) => b.addEventListener("click", () => {
     S.scen = b.dataset.scen;
-    document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+    document.querySelectorAll("#scen-seg button").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
     renderReadiness();
   }));
   $("#theme").addEventListener("click", () => {

@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 from nirantar.bharat_fleet.world import make_world
 from nirantar.chanakya.mrv import consumption_portfolio, greedy_portfolio, surrogate_provision_values
+from nirantar.chanakya.plan_service import PlanDesk
 from nirantar.chitragupta.ledger import Ledger, Signer
 from nirantar.dhanvantari.tier_c import fit_tier_c
 from nirantar.pipeline import clean_json, fan_payload
@@ -25,6 +26,7 @@ from nirantar.records import to_frames
 from nirantar.saarthi.service import SaarthiDesk
 from nirantar.sanjaya.ensemble import P0, P2, P3, run_ensemble, summarise
 from nirantar.sanjaya.twin import Scenario, Twin
+from nirantar.satya.quality import check_spells, dq_scores
 from nirantar.sushruta.agency import flag_rogues, serial_frailty
 
 STATIC = Path(__file__).parent / "static"
@@ -37,17 +39,19 @@ MAX_SEEDS = 16
 class Console:
     """Server-side state: report, ledger and a lazily built simulation context."""
 
-    def __init__(self, results_dir: str | Path):
+    def __init__(self, results_dir: str | Path, plan_kwargs: dict | None = None):
         self.dir = Path(results_dir)
+        self.plan_kwargs = plan_kwargs or {}
         self.report_path = self.dir / "milestone1_report.json"
         if not self.report_path.exists():
             raise FileNotFoundError(f"{self.report_path} not found; run `python -m nirantar demo` first")
         self.report = clean_json(json.loads(self.report_path.read_text()))
         self.ledger = Ledger(self.dir / "ledger.jsonl")
-        self.signer = Signer.generate("web-console")
+        self.signer = Signer.load_or_create(self.dir / "keys" / "web-console.key", "web-console")
         self._lock = threading.Lock()
         self._sim = None
         self._desk = None
+        self._planner = None
 
     # -- simulation context (built once, on first use) -----------------
     def sim_context(self) -> dict:
@@ -64,8 +68,11 @@ class Console:
                 start = hist.snapshot
                 vals = surrogate_provision_values(world, start, dm, cfg["horizon_days"])
                 recent = fr["spells"][fr["spells"]["install_day"] > cfg["history_days"] - 365]
+                issues = check_spells(fr["spells"], fr["repairs"], horizon_day=cfg["history_days"])
+                dq = dq_scores(fr["spells"], issues).set_index("pn")["dq"].to_dict()
                 self._sim = {
                     "world": world, "dm": dm, "start": start, "cfg": cfg, "frailty": frailty,
+                    "dq": dq, "n_fail": dict(dm.n_failures_by_pn),
                     "smart": tuple(greedy_portfolio(vals, cfg["budget_lakh"], cfg["horizon_days"])),
                     "cons": tuple(consumption_portfolio(world, recent, cfg["budget_lakh"])),
                 }
@@ -104,6 +111,15 @@ class Console:
                                          self.report["drishti"]["table"], self.ledger, self.signer)
             return self._desk
 
+    # -- CHANAKYA decision desk ---------------------------------------------
+    def planner(self) -> PlanDesk:
+        ctx = self.sim_context()
+        with self._lock:
+            if self._planner is None:
+                self._planner = PlanDesk(ctx["world"], ctx["start"], ctx["dm"], ctx["n_fail"], ctx["dq"],
+                                         self.ledger, self.signer, self.dir / "plan.json", **self.plan_kwargs)
+            return self._planner
+
     def saarthi_confirm(self, body: dict) -> dict:
         desk = self.desk()
         with self._lock:
@@ -126,9 +142,14 @@ class Console:
         if not (0 <= seq < len(self.ledger.entries)) or self.ledger.entries[seq]["kind"] != "recommendation":
             raise ValueError("ledger_seq does not point at a recommendation")
         reason = str(body.get("reason_code", "WEB_CONSOLE"))[:64]
+        role = body.get("role")
+        role = str(role)[:40] if role else None
+        self.planner().check_decision(seq, verdict, role, reason)
+        payload = {"recommendation_seq": seq, "verdict": verdict, "reason_code": reason, "via": "web console"}
+        if role:
+            payload["role"] = role
         with self._lock:
-            e = self.ledger.append("decision", {"recommendation_seq": seq, "verdict": verdict,
-                                                "reason_code": reason, "via": "web console"}, self.signer)
+            e = self.ledger.append("decision", payload, self.signer)
         return {"seq": e["seq"], "hash": e["entry_hash"][:16], "verdict": verdict}
 
     def tamper_demo(self, body: dict) -> dict:
@@ -173,6 +194,8 @@ def make_handler(console: Console):
                 return self._json(console.report)
             if path == "/api/ledger":
                 return self._json(console.ledger_view())
+            if path == "/api/plan":
+                return self._json(console.planner().view())
             if path == "/api/saarthi/options":
                 return self._json(console.desk().options())
             if path == "/api/saarthi/entries":
@@ -198,6 +221,13 @@ def make_handler(console: Console):
                     return self._json(console.decide(body))
                 if path == "/api/ledger/tamper-demo":
                     return self._json(console.tamper_demo(body))
+                if path == "/api/plan/build":
+                    return self._json(console.planner().build_async())
+                if path == "/api/plan/outcome":
+                    which = body.get("which", "approved")
+                    if which not in ("approved", "all"):
+                        raise ValueError("which must be approved or all")
+                    return self._json(console.planner().outcome(which))
                 if path == "/api/saarthi/parse":
                     return self._json(console.desk().parse(body.get("text", "")))
                 if path == "/api/saarthi/check":

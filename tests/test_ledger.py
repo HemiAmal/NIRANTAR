@@ -47,3 +47,17 @@ def test_caller_cannot_mutate_signed_payload():
     payload["verdict"] = "reject"          # caller keeps editing its own dict
     assert led.entries[0]["payload"]["verdict"] == "accept"
     assert led.verify_all() == []
+
+
+def test_node_key_survives_restart_and_rekeying_is_refused(tmp_path):
+    key = tmp_path / "keys" / "node.key"
+    a = Signer.load_or_create(key, "web-console")
+    led = Ledger(tmp_path / "l.jsonl")
+    led.append("note", {"n": 1}, a)
+    b = Signer.load_or_create(key, "web-console")             # restart: same key, same actor
+    assert b.actor == a.actor and b.actor.startswith("web-console@")
+    again = Ledger(tmp_path / "l.jsonl")
+    again.append("note", {"n": 2}, b)
+    assert again.verify_all() == []
+    with pytest.raises(ValueError):
+        again.append("note", {"n": 3}, Signer.generate(a.actor))   # same name, different key

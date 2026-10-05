@@ -66,14 +66,23 @@ class Policy:
 
 @dataclass(frozen=True)
 class Action:
-    """A sustainment action applied at the start of a run (CHANAKYA catalogue)."""
-    kind: str                          # provision | route | indigenise
+    """A sustainment action applied at the start of a run (CHANAKYA catalogue).
+
+    kinds: provision | route | indigenise | transfer (src base -> base) |
+    expedite (serial in the repair pipeline) | priority (serial to the front of
+    its agency queue) | cann (controlled cannibalisation: pn from donor tail
+    ``src`` to waiting tail ``tail``).
+    """
+    kind: str
     pn: str
     base: Optional[str] = None
     qty: int = 1
     agency: Optional[str] = None
     start_day: float = 0.0             # when the action takes effect / is ordered
     cost_lakh: float = 0.0
+    src: Optional[str] = None          # transfer: source base; cann: donor tail
+    serial: Optional[int] = None       # expedite / priority
+    tail: Optional[str] = None         # cann: receiving tail
 
     def label(self) -> str:
         if self.kind == "provision":
@@ -82,6 +91,14 @@ class Action:
             return f"ROUTE {self.pn} -> {self.agency} (day {self.start_day:g})"
         if self.kind == "indigenise":
             return f"INDIGENISE {self.pn} via {self.agency} (qualified day {self.start_day:g})"
+        if self.kind == "transfer":
+            return f"TRANSFER {self.qty}x {self.pn} {self.src} -> {self.base} (day {self.start_day:g})"
+        if self.kind == "expedite":
+            return f"EXPEDITE S/N {self.serial} ({self.pn}) for {self.base} (day {self.start_day:g})"
+        if self.kind == "priority":
+            return f"REPAIR-PRIORITY S/N {self.serial} ({self.pn}) at {self.agency} (day {self.start_day:g})"
+        if self.kind == "cann":
+            return f"CANN {self.pn} {self.src} -> {self.tail} (day {self.start_day:g})"
         return f"{self.kind} {self.pn}"
 
 
@@ -94,6 +111,9 @@ class Scenario:
 SUPPLY_SHOCK = Scenario("supply_shock", (("RU", "disrupted", 20.0, 200.0),))
 
 OVERHAUL_LIMIT = 1.2        # overhaul once hours since last overhaul exceed 1.2 x eta
+LATERAL_DAYS = 2.0          # base-to-base transfer by road/air
+EXPEDITE_LEG_DAYS = 2.0     # premium freight leg for an expedited unit
+EXPEDITE_TAT_FACTOR = 0.7   # overtime on an expedited repair
 
 INDIGENOUS_AGENCY = Agency("IND-V", "MSME", "IN", 0.35, 20, 0.30, 6, 3)
 
@@ -162,6 +182,8 @@ class Twin:
         self._events: list = []
         self._seq = 0
         self.t = 0.0
+        self.expedited: set[int] = {a.serial for a in actions if a.kind == "expedite" and a.start_day <= 0}
+        self.priority: set[int] = {a.serial for a in actions if a.kind == "priority" and a.start_day <= 0}
         self._init_regimes((start or {}).get("regimes", {}))
         self._init_state(start)
         self._apply_actions()
@@ -255,14 +277,15 @@ class Twin:
             for item in start["pipeline"]:
                 item = dict(item)
                 kind, dt = item.pop("type"), item.pop("dt", 0.0)
+                fast = item.get("sid") in self.expedited
                 if kind == "arrive":
-                    self._push(dt, "ARRIVE", (item["base"], item["sid"]))
+                    self._push(min(dt, EXPEDITE_LEG_DAYS) if fast else dt, "ARRIVE", (item["base"], item["sid"]))
                 elif kind == "inrepair":
                     item["start"] = 0.0
                     self.busy[item["agency"]] += 1
-                    self._push(dt, "REPAIR_DONE", item)
+                    self._push(dt * EXPEDITE_TAT_FACTOR if fast else dt, "REPAIR_DONE", item)
                 else:
-                    self._push(dt, "AG_ARRIVE", item)
+                    self._push(min(dt, EXPEDITE_LEG_DAYS) if fast else dt, "AG_ARRIVE", item)
             for key in list(self.backorders):
                 self._try_fill(key[0], key[1])
 
@@ -306,6 +329,16 @@ class Twin:
                 self._push(a.start_day, "ROUTE", (a.pn, a.agency))
             elif a.kind == "indigenise":
                 self._push(a.start_day, "INDIGENISE", (a.pn, a.agency or INDIGENOUS_AGENCY.id))
+                self.spend += a.cost_lakh
+            elif a.kind == "transfer":
+                self._push(a.start_day, "TRANSFER", (a.src, a.base, a.pn, a.qty))
+                self.spend += a.cost_lakh
+            elif a.kind in ("expedite", "priority"):
+                if a.start_day > 0:
+                    self._push(a.start_day, "FLAG", (a.kind, a.serial))
+                self.spend += a.cost_lakh
+            elif a.kind == "cann":
+                self._push(a.start_day, "CANN", (a.pn, a.src, a.tail))
                 self.spend += a.cost_lakh
             else:
                 raise ValueError(a.kind)
@@ -533,8 +566,45 @@ class Twin:
                     need -= 1
                     self._push(self.t + 2.0, "ARRIVE", (base, sid, "lateral"))
 
+    def _on_TRANSFER(self, payload) -> None:
+        src, dst, pn, qty = payload
+        for _ in range(qty):
+            if not self.stock[(src, pn)]:
+                break                                   # nothing left to send (used meanwhile)
+            self._push(self.t + LATERAL_DAYS, "ARRIVE", (dst, self.stock[(src, pn)].pop(0)))
+
+    def _on_FLAG(self, payload) -> None:
+        kind, sid = payload
+        (self.expedited if kind == "expedite" else self.priority).add(sid)
+
+    def _on_CANN(self, payload) -> None:
+        """Controlled cannibalisation: move a part from a tail that is already down
+        to a tail waiting only for that part. Never takes a part from a flyable tail."""
+        pn, donor_id, recv_id = payload
+        donor, recv = self._tail_by_id(donor_id), self._tail_by_id(recv_id)
+        if donor["base"] != recv["base"] or self._is_mc(donor):
+            return
+        key = (recv["base"], pn)
+        waiting = [b for b in self.backorders[key] if b[0] == recv["idx"]]
+        dslots = [s for s in donor["inst"] if s[0] == pn]
+        if not waiting or not dslots:
+            return
+        self._age(donor, self.t)
+        self._age(recv, self.t)
+        self.backorders[key].remove(waiting[0])
+        dslot = dslots[0]
+        sid = donor["inst"].pop(dslot)
+        donor["rem"].pop(dslot, None)
+        self._end_spell(donor, dslot, sid, "cannibalised")
+        self.backorders[key].append((donor["idx"], dslot, self.t))
+        self._install(recv, waiting[0][1], sid, 2 * recv["ft"].mttr_swap_days)
+        self._refresh(donor)
+        self._refresh(recv)
+
     def _on_ARRIVE(self, payload) -> None:
         base, sid = payload[0], payload[1]
+        self.expedited.discard(sid)
+        self.priority.discard(sid)
         pn = self.pn_of(sid)
         if len(payload) > 2 and payload[2] == "lateral":
             self._lateral_pending[(base, pn)] -= 1
@@ -593,7 +663,11 @@ class Twin:
         overhaul = (not deep) and self.X[sid] + self._recorded_virtual_age(sid) >= OVERHAUL_LIMIT * self.w.pns[pn].eta
         job = {"sid": sid, "pn": pn, "agency": g, "from": from_base, "sent": self.t,
                "deep": deep, "overhaul": bool(overhaul), "id": self._job_seq}
-        self._push(self.t + self.transit_days(g), "AG_ARRIVE", job)
+        self._push(self.t + self._leg(g, sid), "AG_ARRIVE", job)
+
+    def _leg(self, g: str, sid: int) -> float:
+        d = self.transit_days(g)
+        return min(d, EXPEDITE_LEG_DAYS) if sid in self.expedited else d
 
     def _on_AG_ARRIVE(self, job: dict) -> None:
         self.queues[job["agency"]].append(job)
@@ -601,6 +675,10 @@ class Twin:
 
     def _pick_job(self, g: str) -> dict:
         q = self.queues[g]
+        if (self.priority or self.expedited) and len(q) > 1:
+            for i, j in enumerate(q):
+                if j["sid"] in self.priority or j["sid"] in self.expedited:
+                    return q.pop(i)
         if self.policy.aog_priority and len(q) > 1:
             def need(j):
                 return sum(len(self.backorders[(b, j["pn"])]) for b in self.w.bases)
@@ -618,6 +696,8 @@ class Twin:
             tat = ag.tat_median_days * float(np.exp(r.normal(0.0, ag.tat_sigma)))
             if job["deep"] or job.get("overhaul"):
                 tat *= 1.5
+            if sid in self.expedited:
+                tat *= EXPEDITE_TAT_FACTOR
             job["start"] = self.t
             self._push(self.t + tat, "REPAIR_DONE", job)
 
@@ -642,7 +722,7 @@ class Twin:
                                  "start_day": job["start"], "done_day": self.t, "deep_strip": job["deep"],
                                  "overhaul": overhaul, "from_base": job["from"], "fh_since_repair": x})
         dest = self._destination(job)
-        self._push(self.t + self.transit_days(g), "ARRIVE", (dest, sid))
+        self._push(self.t + self._leg(g, sid), "ARRIVE", (dest, sid))
         self._start_jobs(g)
 
     def _destination(self, job: dict) -> str:
@@ -697,6 +777,10 @@ class Twin:
             "stock": {k: list(v) for k, v in self.stock.items() if v},
             "pipeline": pipeline,
             "regimes": {c: int(st[min(int(self.H), len(st) - 1)]) for c, st in self.regime_state.items()},
+            # for planning displays only (not used when continuing a run)
+            "waiting": [{"tail": self.tails[i]["id"], "pn": slot[0], "pos": slot[1] + 1, "days": self.H - t0}
+                        for key, q in self.backorders.items() for i, slot, t0 in q],
+            "work_left": {t["id"]: max(t["work_until"] - self.H, 0.0) for t in self.tails},
         }
 
     def _result(self) -> RunResult:

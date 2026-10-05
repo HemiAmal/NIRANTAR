@@ -24,6 +24,7 @@
 
 <nav class="tabs" role="tablist" aria-label="Console sections">
   <button role="tab" aria-selected="true" data-tab="readiness">Readiness room</button>
+  <button role="tab" aria-selected="false" data-tab="desk">Decision desk</button>
   <button role="tab" aria-selected="false" data-tab="saarthi">SAARTHI snag entry</button>
   <button role="tab" aria-selected="false" data-tab="opportunities">Opportunities</button>
   <button role="tab" aria-selected="false" data-tab="agencies">Repair agencies</button>
@@ -37,7 +38,7 @@
   <section id="tab-readiness" class="tab-panel" role="tabpanel">
     <div class="row-between">
       <h2>Readiness room</h2>
-      <div class="seg" role="radiogroup" aria-label="Scenario">
+      <div class="seg" id="scen-seg" role="radiogroup" aria-label="Scenario">
         <button role="radio" aria-checked="true" data-scen="normal">Normal operations</button>
         <button role="radio" aria-checked="false" data-scen="supply_shock">Supply shock</button>
       </div>
@@ -85,6 +86,51 @@
       <div class="legend" id="sim-legend"></div>
       <div class="chart" id="sim-fan"></div>
       <div id="sim-summary" class="sim-summary"></div>
+    </div>
+  </section>
+
+  <!-- DECISION DESK -->
+  <section id="tab-desk" class="tab-panel" role="tabpanel" hidden>
+    <div class="row-between">
+      <h2>Decision desk</h2>
+      <div class="btns">
+        <label class="inline">Acting as <select id="role"></select></label>
+        <button class="ghost" id="replan-btn" type="button">Re-plan now</button>
+      </div>
+    </div>
+    <p class="lede">Today's board and a priced plan for the people who can act today. Each action is priced against
+      today's procedures on paired simulated futures. The authority named on it approves, defers or rejects, and every
+      decision is signed into the ledger. NIRANTAR never grounds or releases an aircraft.</p>
+    <div id="plan-status" class="muted" role="status"></div>
+    <div class="tiles" id="desk-tiles"></div>
+    <div class="card">
+      <div class="row-between"><h3>Base readiness board</h3>
+        <div class="seg" id="base-seg" role="radiogroup" aria-label="Base"></div></div>
+      <div id="fleet-status"></div>
+      <h4>Aircraft waiting for parts</h4>
+      <div id="aog-table"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Highest risk of a new failure in the next 7 days</h3>
+        <p class="hint">Serviceable aircraft. From the fitted reliability model and each fitted part's estimated age.</p></div>
+      <div class="chart" id="risk-bars"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Today's plan</h3><p class="hint" id="plan-hint"></p></div>
+      <div id="plan-table"></div>
+      <details><summary id="ns-summary">Considered but not selected</summary><div id="ns-table"></div></details>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Approved actions vs today's procedures</h3>
+        <p class="hint">Re-simulates the plan horizon on 12 fresh paired futures, not the ones used to choose the plan,
+          so it is a fair check of the plan's value. Shaded band: 10th to 90th percentile; line: median.</p></div>
+      <div class="btns">
+        <button class="primary" id="outcome-btn" type="button">Simulate approved actions</button>
+        <button class="ghost" id="outcome-all-btn" type="button">Simulate the whole plan</button>
+      </div>
+      <div class="legend" id="outcome-legend"></div>
+      <div class="chart" id="outcome-fan"></div>
+      <div id="outcome-summary" class="sim-summary"></div>
     </div>
   </section>
 
