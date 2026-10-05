@@ -19,7 +19,7 @@ from nirantar.bharat_fleet.world import World
 from nirantar.chanakya.desk import action_from_item, build_plan, simulate_plan
 from nirantar.chitragupta.ledger import Ledger, Signer
 from nirantar.sanjaya.ensemble import P0
-from nirantar.sanjaya.twin import DecisionModel, Policy
+from nirantar.sanjaya.twin import DecisionModel, Policy, Scenario
 
 ROLES = ("Logistics officer", "CEngO", "BRD Chief Engineer", "HQMC review", "Command logistics")
 REASONS = {
@@ -40,9 +40,10 @@ def _json_default(o):
 class PlanDesk:
     def __init__(self, world: World, start: dict, dm: DecisionModel, n_fail: dict, dq: dict,
                  ledger: Ledger, signer: Signer, path: str | Path, policy: Policy = P0, day: int = 0,
-                 **plan_kwargs):
+                 scenario: Scenario = Scenario(), **plan_kwargs):
         self.w, self.start, self.dm, self.n_fail, self.dq = world, start, dm, n_fail, dq
         self.day = day
+        self.scenario = scenario
         self.ledger, self.signer, self.path, self.policy = ledger, signer, Path(path), policy
         self.kwargs = plan_kwargs
         self.plan: dict | None = None
@@ -59,7 +60,7 @@ class PlanDesk:
             self.state.update(i=i, n=n, step=step)
 
         plan = build_plan(self.w, self.start, self.dm, self.policy, self.n_fail, self.dq,
-                          log=log, progress=progress, **self.kwargs)
+                          scenario=self.scenario, log=log, progress=progress, **self.kwargs)
         plan["plan_id"] = "PLAN-" + time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
         plan["day"] = self.day
         for it in plan["items"]:
@@ -153,7 +154,7 @@ class PlanDesk:
         from nirantar.pipeline import fan_payload
         acts = tuple(action_from_item(it) for it in items)
         base, plan = simulate_plan(self.w, self.start, self.dm, self.policy, acts, self.plan["horizon_days"],
-                                   seeds=range(7100, 7100 + n_seeds))
+                                   seeds=range(7100, 7100 + n_seeds), scenario=self.scenario)
         av_b = np.array([r.overall_availability for r in base])
         av_p = np.array([r.overall_availability for r in plan])
         return {"which": which, "n_actions": len(acts), "seeds": n_seeds,

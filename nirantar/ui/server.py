@@ -147,13 +147,30 @@ class Console:
         self.planner().build_async()                 # a fresh plan for the new day
         return self.clock_view()
 
+    def disrupt(self, body: dict) -> dict:
+        country = body.get("country")
+        if country not in ("RU", "FR"):
+            raise ValueError("country must be RU or FR")
+        days = int(body.get("days", 120))
+        if days not in (30, 60, 120, 180):
+            raise ValueError("a disruption lasts 30, 60, 120 or 180 days")
+        if self.planner().state["status"] == "building":
+            raise ValueError("a plan is being prepared; declare the disruption when it is ready")
+        clk = self.clock()
+        with self._lock:
+            shock = clk.disrupt(country, days)
+            self.ledger.append("scenario", {"supplier": country, "state": "disrupted", "from_day": shock["start"],
+                                            "to_day": shock["end"], "via": "exercise control"}, self.signer)
+        self.planner().build_async()                 # re-plan for the crisis
+        return self.clock_view()
+
     def reset_clock(self) -> dict:
         clk = self.clock()
         if self.planner().state["status"] == "building":
             raise ValueError("a plan is being prepared; reset when it is ready")
         with self._lock:
             clk.reset()
-            for f in (self.dir / "live").glob("plan_day*.json"):
+            for f in (self.dir / "live").glob("plan_*.json"):
                 f.unlink()
             self._clock = self._planner = self._desk = None
         return self.clock_view()
@@ -162,10 +179,15 @@ class Console:
     def planner(self) -> PlanDesk:
         ctx, clk = self.sim_context(), self.clock()
         with self._lock:
-            if self._planner is None or self._planner.day != clk.day:
-                path = self.dir / "plan.json" if clk.day == 0 else self.dir / "live" / f"plan_day{clk.day}.json"
+            n_shocks = len(clk.state["shocks"])
+            if self._planner is None or (self._planner.day, self._planner.n_shocks) != (clk.day, n_shocks):
+                path = self.dir / "plan.json" if (clk.day, n_shocks) == (0, 0) else \
+                    self.dir / "live" / f"plan_day{clk.day}_s{n_shocks}.json"
                 self._planner = PlanDesk(ctx["world"], clk.snapshot, ctx["dm"], ctx["n_fail"], ctx["dq"],
-                                         self.ledger, self.signer, path, day=clk.day, **self.plan_kwargs)
+                                         self.ledger, self.signer, path, day=clk.day,
+                                         scenario=clk.scenario(days=self.plan_kwargs.get("horizon", 90)),
+                                         **self.plan_kwargs)
+                self._planner.n_shocks = n_shocks
             return self._planner
 
     def saarthi_confirm(self, body: dict) -> dict:
@@ -277,6 +299,8 @@ def make_handler(console: Console):
                     return self._json(console.tamper_demo(body))
                 if path == "/api/clock/advance":
                     return self._json(console.advance(body))
+                if path == "/api/clock/disrupt":
+                    return self._json(console.disrupt(body))
                 if path == "/api/clock/reset":
                     return self._json(console.reset_clock())
                 if path == "/api/plan/build":

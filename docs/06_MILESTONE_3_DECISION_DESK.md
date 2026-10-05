@@ -17,7 +17,11 @@ python -m nirantar plan         # prepare today's plan offline (also signs it in
 
 A plan is already saved in `experiments/results/plan.json`, so the tab opens instantly. **Re-plan now** builds a fresh plan in the background (about 20 s on a 4-core machine, using all cores up to 8).
 
-> Numbers below were re-priced in Milestone 4, when the desk started continuing the fleet state exactly (remaining maintenance work, how long each aircraft has waited, first-come-first-served order). The changes are small.
+> Numbers below are re-priced as of Milestone 5. Two changes since this milestone was first built:
+> - **Exact continuation (Milestone 4):** the desk continues the fleet state exactly, keeping remaining maintenance work, how long each aircraft has waited, and first-come-first-served order.
+> - **Realistic expediting (Milestone 5):** expedited freight still pays a stressed supplier's customs and payment delays. A leg takes 2 days when supply is normal, 6 days when stressed and 16 days when disrupted.
+>
+> The same milestone added **repair routing** as an action.
 
 ---
 
@@ -33,7 +37,7 @@ A plan is already saved in `experiments/results/plan.json`, so the tab opens ins
         │
         ▼
  2. Candidates    for each aircraft waiting for parts, the actions people can take today
-                  (89 candidates on today's board)
+                  (95 candidates on today's board)
         │
         ▼
  3. Price         paired simulation against today's procedures (MRV, common random numbers):
@@ -61,9 +65,10 @@ New in the digital twin for this milestone:
 |---|---|---|
 | **Controlled cannibalisation** | A part moves from an aircraft that is **already down** for another part to an aircraft waiting only for that part. One aircraft flies instead of none. The twin refuses the move if the donor is flyable. | CEngO |
 | **Lateral transfer** | A spare on another base's shelf is sent across, arriving in 2 days | Logistics officer |
-| **Expedite** | A unit already in the repair pipeline gets overtime (repair time × 0.7), air freight (each shipping leg ≤ 2 days) and the front of its agency's queue | Logistics officer |
+| **Expedite** | A unit already in the repair pipeline gets overtime (repair time × 0.7), air freight and the front of its agency's queue. Each shipping leg is capped at 2 days × the supplier's regime multiplier, because customs and payment delays still apply | Logistics officer |
 | **Repair-queue priority** | A queued unit is repaired next | BRD Chief Engineer |
 | **Purchase** | One new unit, offered only if its lead time fits the 90-day horizon | Logistics officer (Command logistics above ₹25 lakh) |
+| **Repair routing** (added in Milestone 5) | Future repairs of a part go to another approved agency, offered when the default agency's supplier is stressed or disrupted | HQMC review |
 
 Runs without these actions give bit-identical results to before, so every Milestone 1 number still holds.
 
@@ -89,7 +94,7 @@ Each plan line shows:
 - **Data evidence grade** (E1 to E5) and the **approving authority** from the Action Authority Matrix.
 - **Decision controls**, shown only to the role allowed to decide. Anyone else sees *"Needs CEngO"*. The server enforces the same rule.
 
-The 69 candidates that were *not* selected are listed with their reasons:
+The 75 candidates that were *not* selected are listed with their reasons:
 - value not certain;
 - gains in too few futures;
 - screened out;
@@ -104,24 +109,24 @@ Today the fleet has **33 of 70 aircraft waiting for parts**, and 2 more in maint
 
 | | Value |
 |---|---|
-| Candidate actions generated | 89: 43 expedites, 36 cannibalisations, 7 transfers, 3 purchases |
-| Refined on 24 futures after screening | 77 |
-| **Selected** | **20**: 10 expedites, 5 controlled cannibalisations, 3 lateral transfers, 2 purchases |
-| Approvers | 15 for the Logistics officer, 5 for the CEngO |
-| Cost | ₹29.7 lakh (budget ₹50 lakh) |
-| **Plan value, 90 days** (joint, on the 24 futures used to choose it) | **+177 weighted aircraft-days**, 95% CI 157 to 197; availability 64.8% → 68.2% |
-| Sum of the 20 individual values | +218. The joint value is lower because actions overlap |
-| Aircraft-days waiting for parts saved | 237 |
-| **Fresh-future check** (12 futures not used to choose the plan) | **+128 weighted aircraft-days**; availability 63.8% → 66.3%; 178 fewer aircraft-days waiting for parts |
-| Cost of waiting, all 20 pending | ≈15 aircraft-days lost per day of delay |
+| Candidate actions generated | 95: 43 expedites, 36 cannibalisations, 7 transfers, 6 re-routings, 3 purchases |
+| Refined on 24 futures after screening | 79 |
+| **Selected** | **20**: 9 expedites, 5 controlled cannibalisations, 3 lateral transfers, 2 purchases, 1 re-routing |
+| Approvers | 14 for the Logistics officer, 5 for the CEngO, 1 for HQMC review |
+| Cost | ₹28.0 lakh (budget ₹50 lakh) |
+| **Plan value, 90 days** (joint, on the 24 futures used to choose it) | **+188 weighted aircraft-days**, 95% CI 165 to 211; availability 64.8% → 68.4% |
+| Sum of the 20 individual values | +220. The joint value is lower because actions overlap |
+| Aircraft-days waiting for parts saved | 248 |
+| **Fresh-future check** (12 futures not used to choose the plan) | **+162 weighted aircraft-days**; availability 63.8% → 66.8%; 215 fewer aircraft-days waiting for parts |
+| Cost of waiting, all 20 pending | ≈13 aircraft-days lost per day of delay |
 
 ![Whole plan vs today's procedures, 12 fresh futures](img/desk_outcome.png)
 
 **The honest reading:**
 1. **The plan buys time, not a new steady state.** Availability jumps in the first two weeks, as aircraft fly on cannibalised, transferred and expedited parts. The two lines converge by month 2, because the parts were arriving anyway. Lasting gains need what Milestone 1 measured: routing, the priced spares portfolio and rogue quarantine.
-2. **Winner's curse.** On the futures used to choose the plan it is worth +177. On fresh futures it is worth +128, about 28% less. Choosing the best of 89 noisy estimates inflates the winners. The console's outcome check always uses fresh futures, and anyone using the +177 figure should quote the +128 next to it. Milestone 4's operations clock measures the realised gain on identical events (docs/07).
-3. **Expediting dominates**, because Russian-sourced repairs carry long shipping and customs legs. In the synthetic world, OEM-RU repairs take about 40–50 days to return; expediting brings some back in 5–14 days. Whether premium freight can really cut those legs is an assumption to validate with logistics staff.
-4. **No repair-priority actions today.** No agency had a queue when the records end, so there was nothing to re-order. The action type is built and tested, and it will show up when queues form, e.g. under a supply shock.
+2. **Winner's curse.** On the futures used to choose the plan it is worth +188. On fresh futures it is worth +162, about 14% less. Choosing the best of 95 noisy estimates inflates the winners. The console's outcome check always uses fresh futures, and anyone using the +188 figure should quote the +162 next to it. Milestone 4's operations clock measures the realised gain on identical events (docs/07).
+3. **Expediting dominates**, because Russian-sourced repairs carry long shipping legs, and Russian supply is already *stressed* (3× slower) when the records end. Expediting brings some OEM-RU units back in 6–18 days instead of 30–50, even though customs and payment delays still apply. How much premium freight can really shorten these legs is an assumption to validate with logistics staff.
+4. **No repair-priority actions.** No agency has a queue when the records end, and none forms even under a declared disruption, because the repair agencies have spare capacity in this synthetic world. The action type is built and tested, and it would matter for a saturated depot.
 5. **The baseline is today's procedures (P0):** no routine lateral transfers and first-in-first-out repair queues. Under the fully automated NIRANTAR policy (P3), some of these actions would already happen by rule, and their marginal value would be smaller.
 
 ---

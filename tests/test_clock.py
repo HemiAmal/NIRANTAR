@@ -73,3 +73,30 @@ def test_resume_off_by_default(world, history):
     s = history.snapshot
     a = Twin(world, P0, 20, seed=4, start=s).run().waad
     assert a == Twin(world, P0, 20, seed=4, start=s).run().waad
+
+
+def test_declared_disruption_hits_both_fleets(world, clock):
+    with pytest.raises(ValueError):
+        clock.disrupt("XX", 30)
+    clock.advance(2)
+    shock = clock.disrupt("RU", 30)
+    assert shock == {"country": "RU", "start": 2, "end": 32}
+    scen = clock.scenario()
+    assert scen.forced == (("RU", "disrupted", 0.0, 30.0),)
+    assert clock.scenario(d0=10).forced == (("RU", "disrupted", 0.0, 22.0),)
+    clock.advance(7)
+    v = clock.view()
+    assert all(r["disrupted"] == ["RU"] for r in v["log"][2:])
+    assert v["shocks"][0]["active"] and any(e["kind"] == "shock" for e in v["events"])
+    assert all(r["live"] == r["shadow"] for r in v["log"])            # no decisions: still no gap
+    clock.advance(30)
+    assert not clock.view()["shocks"][0]["active"] and clock.scenario().forced == ()
+
+
+def test_express_freight_still_pays_customs_delays(world, history):
+    from nirantar.sanjaya.twin import EXPEDITE_LEG_DAYS, Scenario
+    s = history.snapshot
+    shock = Scenario("ru", (("RU", "disrupted", 0.0, 90.0),))
+    t = Twin(world, P0, 10, seed=1, start=s, scenario=shock, resume=True)
+    assert t._express_days("OEM-RU") == EXPEDITE_LEG_DAYS * 8
+    assert t._express_days("BRD-1") == EXPEDITE_LEG_DAYS

@@ -114,6 +114,14 @@
       </div>
       <p class="hint">Approved actions are applied when the clock advances. A shadow fleet meets exactly the same failures,
         repair times and supply conditions but takes no decisions, so the gap between the two lines is what the decisions bought.</p>
+      <div class="shock-row">
+        <label class="inline">Declare a disruption:
+          <select id="shock-country"><option value="RU">Russian supply</option><option value="FR">French supply</option></select></label>
+        <label class="inline">for
+          <select id="shock-days"><option>30</option><option>60</option><option selected>120</option><option>180</option></select> days</label>
+        <button class="ghost" id="shock-btn" type="button">Declare from today</button>
+        <span id="shock-status" class="shock-status"></span>
+      </div>
       <div class="tiles" id="clock-tiles"></div>
       <div class="legend" id="clock-legend"></div>
       <div class="chart" id="clock-chart"></div>

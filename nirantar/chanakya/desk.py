@@ -34,7 +34,7 @@ from scipy.stats import t as student_t
 from nirantar.bharat_fleet.world import World
 from nirantar.chanakya.mrv import surrogate_provision_values, trace_diff
 from nirantar.sanjaya.twin import (EXPEDITE_LEG_DAYS, EXPEDITE_TAT_FACTOR, LATERAL_DAYS, Action, DecisionModel,
-                                   Policy, Twin)
+                                   Policy, Scenario, Twin)
 from nirantar.satya.quality import evidence_grade
 
 TRANSFER_COST_LAKH = 0.5
@@ -46,9 +46,10 @@ AUTHORITY = {
     "provision": ("Logistics officer", "Logistics officer", "Logistics officer + CEngO"),
     "priority": ("BRD Chief Engineer", "BRD Chief Engineer", "HQMC review"),
     "cann": ("CEngO", "CEngO", "CEngO + Command"),
+    "route": ("HQMC review", "HQMC review", "HQMC review"),
 }
 KIND_LABEL = {"cann": "Controlled cannibalisation", "transfer": "Lateral transfer", "expedite": "Expedite",
-              "priority": "Repair-queue priority", "provision": "Purchase"}
+              "priority": "Repair-queue priority", "provision": "Purchase", "route": "Repair routing"}
 
 
 def _lc(name: str) -> str:
@@ -74,16 +75,31 @@ def _est_age(start: dict, dm: DecisionModel, sid: int) -> float:
     return v + float(start["X"][sid])
 
 
-def _leg_days(world: World, agency: str, start: dict) -> float:
+def _mult(world: World, start: dict, country: str, scenario: Scenario | None = None) -> float:
+    """Today's supply-regime multiplier for a supplier country (a declared disruption overrides)."""
+    m = world.regimes.get(country)
+    if m is None or len(m.states) == 1:
+        return 1.0
+    idx = int(start.get("regimes", {}).get(country, 0))
+    for c, state, s0, s1 in (scenario.forced if scenario else ()):
+        if c == country and s0 <= 0 < s1:
+            idx = m.states.index(state)
+    return m.tat_multiplier[idx]
+
+
+def _leg_days(world: World, agency: str, start: dict, scenario: Scenario | None = None) -> float:
     ag = world.agencies.get(agency)
     if ag is None:
         return 3.0
-    m = world.regimes.get(ag.country)
-    mult = m.tat_multiplier[start.get("regimes", {}).get(ag.country, 0)] if m else 1.0
-    return ag.transport_days * mult
+    return ag.transport_days * _mult(world, start, ag.country, scenario)
 
 
-def pipeline_etas(world: World, start: dict) -> dict[tuple[str, str], list[dict]]:
+def _express_days(world: World, agency: str | None, start: dict, scenario: Scenario | None = None) -> float:
+    ag = world.agencies.get(agency) if agency else None
+    return EXPEDITE_LEG_DAYS * (_mult(world, start, ag.country, scenario) if ag else 1.0)
+
+
+def pipeline_etas(world: World, start: dict, scenario: Scenario | None = None) -> dict[tuple[str, str], list[dict]]:
     """(base, pn) -> pipeline units heading there, with an expected arrival day."""
     out: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for it in start["pipeline"]:
@@ -92,21 +108,22 @@ def pipeline_etas(world: World, start: dict) -> dict[tuple[str, str], list[dict]
         if it["type"] == "arrive":
             eta, where = it["dt"], "in transit to base"
         elif it["type"] == "inrepair":
-            eta, where = it["dt"] + _leg_days(world, it["agency"], start), f"in repair at {it['agency']}"
+            eta, where = it["dt"] + _leg_days(world, it["agency"], start, scenario), f"in repair at {it['agency']}"
         else:
             ag = world.agencies.get(it["agency"])
             tat = ag.tat_median_days if ag else 30.0
-            eta = it["dt"] + tat + _leg_days(world, it["agency"], start)
+            eta = it["dt"] + tat + _leg_days(world, it["agency"], start, scenario)
             where = f"queued at {it['agency']}" if it["dt"] <= 0 else f"in transit to {it['agency']}"
+        last = (start["hist"].get(it["sid"]) or [[None]])[-1][0]
         out[(base, pn)].append({"sid": int(it["sid"]), "eta": float(eta), "where": where, "type": it["type"],
-                                "agency": it.get("agency"), "dt": float(it["dt"])})
+                                "agency": it.get("agency") or last, "dt": float(it["dt"])})
     for v in out.values():
         v.sort(key=lambda d: d["eta"])
     return out
 
 
-def board(world: World, start: dict, dm: DecisionModel, risk_days: int = 7) -> dict:
-    etas = pipeline_etas(world, start)
+def board(world: World, start: dict, dm: DecisionModel, risk_days: int = 7, scenario: Scenario | None = None) -> dict:
+    etas = pipeline_etas(world, start, scenario)
     holes = defaultdict(list)                     # (base, pn) -> waiting entries, longest wait first
     for w in start.get("waiting", []):
         base = next(t["base"] for t in world.tails if t["id"] == w["tail"])
@@ -158,8 +175,9 @@ def _tail_base(world: World) -> dict[str, str]:
     return {t["id"]: t["base"] for t in world.tails}
 
 
-def candidates(world: World, start: dict, dm: DecisionModel, brd: dict, horizon: int) -> list[Candidate]:
-    etas = pipeline_etas(world, start)
+def candidates(world: World, start: dict, dm: DecisionModel, brd: dict, horizon: int,
+               scenario: Scenario | None = None) -> list[Candidate]:
+    etas = pipeline_etas(world, start, scenario)
     stock = defaultdict(int)
     for k, v in start["stock"].items():
         stock[tuple(k)] += len(v)
@@ -225,18 +243,21 @@ def candidates(world: World, start: dict, dm: DecisionModel, brd: dict, horizon:
                     f"{len(hs)} aircraft waiting at {base}; typical lead time ~{lead:.0f} d.",
                     fixes=(("hole", base, pn),)))
         # expedite units already heading here (no more than the aircraft waiting, plus one)
+        def express(it):
+            return _express_days(world, it["agency"], start, scenario)
         useful = [it for it in etas.get((base, pn), [])
-                  if not (it["eta"] <= EXPEDITE_LEG_DAYS + 2 or it["type"] == "arrive" and it["dt"] <= EXPEDITE_LEG_DAYS)]
+                  if not (it["eta"] <= express(it) + 2 or it["type"] == "arrive" and it["dt"] <= express(it))]
         for it in useful[:len(hs) + 1]:
-            fast = (min(it["dt"], EXPEDITE_LEG_DAYS) if it["type"] == "arrive" else
-                    it["dt"] * EXPEDITE_TAT_FACTOR + EXPEDITE_LEG_DAYS if it["type"] == "inrepair" else None)
+            fast = (min(it["dt"], express(it)) if it["type"] == "arrive" else
+                    it["dt"] * EXPEDITE_TAT_FACTOR + express(it) if it["type"] == "inrepair" else None)
             fast_txt = f"~{fast:.0f} d instead of ~{it['eta']:.0f} d" if fast is not None else \
                 f"jumps the queue and flies back (normally ~{it['eta']:.0f} d)"
             add(Candidate(
                 Action("expedite", pn, base=base, serial=it["sid"], agency=it["agency"],
                        cost_lakh=expedite_cost(world, pn)),
                 f"Expedite S/N {it['sid']} ({name}) for {base}",
-                f"Unit is {it['where']}; with overtime and air freight it reaches {base} in {fast_txt}. "
+                f"Unit is {it['where']}; with overtime and air freight it reaches {base} in {fast_txt}"
+                f"{' (customs and payment delays still apply)' if express(it) > EXPEDITE_LEG_DAYS else ''}. "
                 f"{len(hs)} aircraft waiting there.",
                 uses=(("serial", it["sid"]),), fixes=(("hole", base, pn),)))
             if it["type"] == "job" and it["dt"] <= 0:
@@ -245,6 +266,28 @@ def candidates(world: World, start: dict, dm: DecisionModel, brd: dict, horizon:
                     f"Repair S/N {it['sid']} ({name}) first at {it['agency']}",
                     f"It sits in {it['agency']}'s queue while {len(hs)} aircraft at {base} wait for this part.",
                     uses=(("serial", it["sid"]),), fixes=(("hole", base, pn),)))
+
+    # crisis routing: send future repairs of a part away from a supplier whose shipping is stressed or disrupted
+    for pn, p in world.pns.items():
+        dflt = world.agencies[p.default_agency]
+        m_d = _mult(world, start, dflt.country, scenario)
+        if m_d <= 1.0:
+            continue
+        old_days = dflt.tat_median_days + 2 * dflt.transport_days * m_d
+        for g in p.eligible_agencies:
+            ag = world.agencies[g]
+            if g == p.default_agency or _mult(world, start, ag.country, scenario) > 1.0:
+                continue
+            new_days = ag.tat_median_days + 2 * ag.transport_days
+            q_note = (f" Trade-off: {g} repairs are less durable (estimated q {dm.q_hat.get(g, ag.q):.2f} vs "
+                      f"{dm.q_hat.get(dflt.id, dflt.q):.2f}), so revert when supply normalises."
+                      if dm.q_hat.get(g, ag.q) > dm.q_hat.get(dflt.id, dflt.q) + 0.05 else "")
+            add(Candidate(
+                Action("route", pn, agency=g),
+                f"Send future {_lc(p.name)} repairs to {g} instead of {dflt.id}",
+                f"{dflt.id} shipping is {'disrupted' if m_d >= 8 else 'stressed'} ({m_d:.0f}x slower): a repair loop takes "
+                f"~{old_days:.0f} d there vs ~{new_days:.0f} d at {g}.{q_note}",
+                uses=(("route", pn),)))
 
     # proactive transfers: a base with no spare and likely demand soon, another base with two or more
     vals = surrogate_provision_values(world, start, dm, horizon)
@@ -280,7 +323,7 @@ def _run_job(job: tuple) -> tuple:
     actions, seed = job
     c = _CTX
     r = Twin(c["world"], c["policy"], c["horizon"], seed=seed, actions=actions, decision_model=c["dm"],
-             start=c["start"], resume=True).run()
+             start=c["start"], resume=True, scenario=c["scenario"]).run()
     return r.waad, r.overall_availability, r.nmcs_days, dict(r.nmcs_by_tail)
 
 
@@ -295,8 +338,9 @@ class _Res:
 class Runner:
     """Runs batches of (actions, seed) on a process pool (or serially with workers=1)."""
 
-    def __init__(self, world, policy, horizon, start, dm, workers: int | None = None):
-        self.ctx = {"world": world, "policy": policy, "horizon": horizon, "start": start, "dm": dm}
+    def __init__(self, world, policy, horizon, start, dm, workers: int | None = None, scenario: Scenario = Scenario()):
+        self.ctx = {"world": world, "policy": policy, "horizon": horizon, "start": start, "dm": dm,
+                    "scenario": scenario}
         self.workers = workers if workers is not None else max(1, min(os.cpu_count() or 1, 8))
         self.ex = None
         if self.workers > 1:
@@ -343,13 +387,13 @@ def _price(base: list[_Res], runs: list[_Res]) -> dict:
 def build_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, n_fail: dict[str, int],
                dq: dict[str, float], horizon: int = 90, n_seeds: int = 24, n_screen: int = 8,
                budget_lakh: float = 50.0, delay_days: float = 7.0, seed0: int = 7000, workers: int | None = None,
-               log=lambda *_: None, progress=lambda *_: None) -> dict:
+               scenario: Scenario = Scenario(), log=lambda *_: None, progress=lambda *_: None) -> dict:
     t0 = time.time()
-    brd = board(world, start, dm)
-    cands = candidates(world, start, dm, brd, horizon)
+    brd = board(world, start, dm, scenario=scenario)
+    cands = candidates(world, start, dm, brd, horizon, scenario)
     log(f"  {len(cands)} candidate actions")
     seeds = list(range(seed0, seed0 + n_seeds))
-    runner = Runner(world, policy, horizon, start, dm, workers)
+    runner = Runner(world, policy, horizon, start, dm, workers, scenario)
     try:
         progress(0, 4, "baseline futures")
         base = runner.run([((), s) for s in seeds])
@@ -458,6 +502,7 @@ def build_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, n_f
         "items": [item(c) for c in chosen],
         "not_selected": [item(c, why) for c, why in sorted(rejected, key=lambda x: -x[0].priced["mrv"])],
         "joint": joint, "cost_lakh": round(spent, 2), "n_candidates": len(cands), "n_refined": n_refined,
+        "scenario": [list(f) for f in scenario.forced],
         "screen_seeds": n_screen,
         "board": brd, "runtime_s": round(time.time() - t0, 1),
     }
@@ -469,9 +514,10 @@ def action_from_item(d: dict) -> Action:
 
 
 def simulate_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, actions: tuple[Action, ...],
-                  horizon: int = 90, seeds=range(7100, 7112)) -> tuple[list, list]:
+                  horizon: int = 90, seeds=range(7100, 7112), scenario: Scenario = Scenario()) -> tuple[list, list]:
     """Ensembles with and without the approved actions (same random streams)."""
-    base = [Twin(world, policy, horizon, seed=s, decision_model=dm, start=start, resume=True).run() for s in seeds]
-    plan = [Twin(world, policy, horizon, seed=s, actions=actions, decision_model=dm, start=start, resume=True).run()
-            for s in seeds]
+    base = [Twin(world, policy, horizon, seed=s, decision_model=dm, start=start, resume=True,
+                 scenario=scenario).run() for s in seeds]
+    plan = [Twin(world, policy, horizon, seed=s, actions=actions, decision_model=dm, start=start, resume=True,
+                 scenario=scenario).run() for s in seeds]
     return base, plan

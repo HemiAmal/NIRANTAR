@@ -1,6 +1,6 @@
 # NIRANTAR Milestone 4: Operations clock
 
-> **Status:** built and tested (86 tests passing in the whole repository). The Decision desk now runs the station forward in time. Approved actions are applied, aircraft fail and come back, a fresh plan is prepared for each new day, and a **shadow fleet** that meets identical events with no decisions shows what the decisions actually bought.
+> **Status:** built and tested (86 tests passing in the whole repository when built; 90 after Milestone 5). The Decision desk now runs the station forward in time. Approved actions are applied, aircraft fail and come back, a fresh plan is prepared for each new day, and a **shadow fleet** that meets identical events with no decisions shows what the decisions actually bought.
 >
 > All data is synthetic (BHARAT-FLEET). No number here is an IAF result.
 
@@ -39,15 +39,15 @@ This is the strongest form of evidence the console can give. It is still a simul
 
 ### Result on the demo path
 
-I approved all 20 actions of today's plan (₹29.7 lakh) and advanced the clock 7 + 7 days.
+I approved all 20 actions of today's plan (₹28.0 lakh, re-priced in Milestone 5) and advanced the clock 7 + 7 days.
 
 | After 14 days | Live (with decisions) | Shadow (no decisions) |
 |---|---|---|
 | Available now | 72% | 61% |
 | Waiting for parts | 21 | 28 |
-| **Gained by the decisions** | **+90 weighted aircraft-days (+101 aircraft-days)** | |
+| **Gained by the decisions** | **+78 weighted aircraft-days (+89 aircraft-days)** | |
 
-Compare this with the plan's forecasts for the full 90 days: +177 on the futures used to choose it, and +128 on fresh futures (docs/06). Two weeks in, the realised path is on course for the fresh-future figure. This is one path of many; another run of events would give a different number.
+Compare this with the plan's forecasts for the full 90 days: +188 on the futures used to choose it, and +162 on fresh futures (docs/06). Most of a plan's value comes in the first weeks, as aircraft fly on cannibalised, transferred and expedited parts, so two weeks in it has realised about half. This is one path of many; another run of events would give a different number.
 
 ---
 
