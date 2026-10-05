@@ -280,7 +280,7 @@ def _run_job(job: tuple) -> tuple:
     actions, seed = job
     c = _CTX
     r = Twin(c["world"], c["policy"], c["horizon"], seed=seed, actions=actions, decision_model=c["dm"],
-             start=c["start"]).run()
+             start=c["start"], resume=True).run()
     return r.waad, r.overall_availability, r.nmcs_days, dict(r.nmcs_by_tail)
 
 
@@ -471,7 +471,7 @@ def action_from_item(d: dict) -> Action:
 def simulate_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, actions: tuple[Action, ...],
                   horizon: int = 90, seeds=range(7100, 7112)) -> tuple[list, list]:
     """Ensembles with and without the approved actions (same random streams)."""
-    base = [Twin(world, policy, horizon, seed=s, decision_model=dm, start=start).run() for s in seeds]
-    plan = [Twin(world, policy, horizon, seed=s, actions=actions, decision_model=dm, start=start).run()
+    base = [Twin(world, policy, horizon, seed=s, decision_model=dm, start=start, resume=True).run() for s in seeds]
+    plan = [Twin(world, policy, horizon, seed=s, actions=actions, decision_model=dm, start=start, resume=True).run()
             for s in seeds]
     return base, plan

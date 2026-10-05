@@ -33,7 +33,7 @@ python -m nirantar demo            # full run, ~60 s -> experiments/results/
 python -m nirantar serve           # web console on http://127.0.0.1:8050
 ```
 
-### 2.1 The web console (Milestone 4a, built early for demos)
+### 2.1 The web console (built early for demos)
 
 `python -m nirantar serve` opens a local, offline console (Python standard library + vanilla JS + hand-drawn SVG; no CDN, no cloud; light and dark modes; works on phones):
 

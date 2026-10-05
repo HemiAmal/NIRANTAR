@@ -397,7 +397,7 @@ async function runSim(ev) {
 }
 
 // ------------------------------------------------------------ CHANAKYA decision desk
-const DK = { view: null, base: "All", poll: null, outcome: null };
+const DK = { view: null, base: "All", poll: null, outcome: null, clock: null };
 const REASON_LABEL = {
   MRV_CI_POSITIVE: "Approve: value clearly positive", OPERATIONAL_NEED: "Approve: operational need",
   AWAITING_FUNDS: "Defer: awaiting funds", NEED_MORE_INFO: "Defer: need more information", TRANSPORT_UNAVAILABLE: "Defer: no transport",
@@ -420,6 +420,7 @@ async function loadPlan() {
     $("#replan-btn").disabled = false;
     if (st.status === "error") $("#plan-status").textContent = "Planning failed: " + st.error;
   }
+  renderClock();
   if (DK.view.plan) renderDesk();
   else if (st.status !== "building") $("#plan-status").textContent = "No plan yet. Press “Re-plan now” (about 20–60 s).";
 }
@@ -432,7 +433,7 @@ function renderDesk() {
   const v = DK.view, P = v.plan, brd = P.board, base = DK.base;
   const inBase = (b) => base === "All" || b === base;
   if (v.state.status !== "building") {
-    $("#plan-status").textContent = `${P.plan_id} · prepared ${new Date(P.created * 1000).toLocaleString()} · ` +
+    $("#plan-status").textContent = `${P.plan_id} · plan for ${P.day ? "day " + P.day : "today (day 0)"} · prepared ${new Date(P.created * 1000).toLocaleString()} · ` +
       `${P.n_candidates} candidate actions priced on ${P.seeds} paired futures over ${P.horizon_days} days against today's procedures.`;
   }
   // tiles
@@ -450,7 +451,7 @@ function renderDesk() {
   // base selector
   const bases = ["All", ...new Set(tails.map((t) => t.base))].sort((a, b) => (a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b)));
   $("#base-seg").innerHTML = bases.map((b) => `<button role="radio" aria-checked="${b === base}" data-base="${esc(b)}">${b === "All" ? "All bases" : esc(b)}</button>`).join("");
-  $("#base-seg").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { DK.base = b.dataset.base; renderDesk(); }));
+  $("#base-seg").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { DK.base = b.dataset.base; renderDesk(); renderClock(); }));
 
   // fleet status per base
   const groups = {};
@@ -584,9 +585,117 @@ async function renderDeskTab() {
       catch (e) { toast(e.message); }
     });
     $("#outcome-btn").addEventListener("click", () => runOutcome("approved"));
+    $("#adv1").addEventListener("click", () => advanceClock(1));
+    $("#adv7").addEventListener("click", () => advanceClock(7));
+    $("#clock-reset").addEventListener("click", resetClock);
+    loadClock().catch((e) => toast("Clock: " + e.message));
     $("#outcome-all-btn").addEventListener("click", () => runOutcome("all"));
     if (DK.view.plan) renderDesk();
-  } else if (DK.view.plan) renderDesk();
+  } else {
+    if (DK.view.plan) renderDesk();
+    renderClock();
+  }
+}
+
+// ------------------------------------------------------------ operations clock
+const EVENT_KIND = { applied: ["neutral", "Decision applied"], failure: ["critical", "Failure"],
+  waiting: ["warning", "Waiting for parts"], restored: ["good", "Back on the line"] };
+
+function lineChart(container, series, { yFmt = (v) => pct(v, 0) } = {}) {
+  const W = Math.max(container.clientWidth, 320), H = 260, m = { l: 46, r: 16, t: 12, b: 30 };
+  const s = svgRoot(container, W, H);
+  const xs = series[0].points.map((p) => p[0]), maxX = Math.max(...xs), minX = Math.min(0, ...xs);
+  const ys = series.flatMap((x) => x.points.map((p) => p[1]));
+  const lo = Math.max(0, Math.floor((Math.min(...ys) - 0.03) * 20) / 20), hi = Math.min(1, Math.ceil((Math.max(...ys) + 0.03) * 20) / 20);
+  const X = (d) => m.l + ((d - minX) / Math.max(maxX - minX, 1)) * (W - m.l - m.r);
+  const Y = (v) => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+  for (const t of niceTicks(lo, hi, 4)) {
+    el("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), class: "grid" }, s);
+    el("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, s).textContent = yFmt(t);
+  }
+  el("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, class: "axis" }, s);
+  for (const t of niceTicks(minX, maxX, W < 600 ? 4 : 8).filter((t) => Number.isInteger(t))) {
+    el("text", { x: X(t), y: H - m.b + 18, "text-anchor": t === minX ? "start" : t === maxX ? "end" : "middle" }, s).textContent = t === 0 ? "Today" : `Day ${t}`;
+  }
+  for (const ser of series) {
+    const pts = ser.points;
+    if (pts.length > 1) el("path", { d: "M" + pts.map((p) => `${X(p[0])},${Y(p[1])}`).join(" L"),
+      style: `fill:none;stroke:var(${ser.color});stroke-width:2;stroke-linejoin:round;stroke-linecap:round` }, s);
+    const last = pts[pts.length - 1];
+    el("circle", { cx: X(last[0]), cy: Y(last[1]), r: 4, style: `fill:var(${ser.color});stroke:var(--surface-1);stroke-width:2` }, s);
+  }
+  const cross = el("line", { y1: m.t, y2: H - m.b, class: "axis", visibility: "hidden" }, s);
+  const dots = series.map((ser) => el("circle", { r: 4, visibility: "hidden", style: `fill:var(${ser.color});stroke:var(--surface-1);stroke-width:2` }, s));
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, s);
+  hit.addEventListener("mousemove", (ev) => {
+    const box = s.getBoundingClientRect(), x = (ev.clientX - box.left) * (W / box.width);
+    const d = minX + ((x - m.l) / (W - m.l - m.r)) * (maxX - minX);
+    let i = 0; for (let k = 0; k < xs.length; k++) if (Math.abs(xs[k] - d) < Math.abs(xs[i] - d)) i = k;
+    cross.setAttribute("x1", X(xs[i])); cross.setAttribute("x2", X(xs[i])); cross.setAttribute("visibility", "visible");
+    series.forEach((ser, j) => { dots[j].setAttribute("cx", X(ser.points[i][0])); dots[j].setAttribute("cy", Y(ser.points[i][1])); dots[j].setAttribute("visibility", "visible"); });
+    const diff = series.length === 2 ? series[0].points[i][1] - series[1].points[i][1] : null;
+    showTip(`<div class="t">Day ${xs[i]}</div>` + series.map((ser) => `<div class="r"><span><i style="background:var(${ser.color})"></i>${esc(ser.name)}</span><b>${yFmt(ser.points[i][1])}</b></div>`).join("") +
+      (diff != null ? `<div class="r muted"><span>Difference</span><span>${pts(diff)}</span></div>` : ""), ev.clientX, ev.clientY);
+  });
+  hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); dots.forEach((d) => d.setAttribute("visibility", "hidden")); hideTip(); });
+}
+
+async function loadClock() {
+  DK.clock = await api("/api/clock");
+  renderClock();
+}
+function renderClock() {
+  const c = DK.clock;
+  if (!c) return;
+  $("#clock-title").textContent = c.day === 0 ? "Operations clock · today (day 0)" : `Operations clock · day ${c.day}`;
+  const nApplied = c.applied.length;
+  $("#clock-tiles").innerHTML = [
+    tile({ label: "Gained by approved decisions", value: c.log.length ? signed(c.waad_gained) : "–",
+      delta: c.log.length ? `weighted aircraft-days vs the shadow fleet (${signed(c.aircraft_days_gained)} aircraft-days)` : "advance the clock to measure", up: c.waad_gained > 0 }),
+    tile({ label: "Available now", value: c.availability_live != null ? pct(c.availability_live, 0) : "–",
+      delta: c.availability_shadow != null ? `shadow fleet: ${pct(c.availability_shadow, 0)}` : "" }),
+    tile({ label: "Waiting for parts now", value: fmt(c.waiting_live), delta: `shadow fleet: ${fmt(c.waiting_shadow)}` }),
+    tile({ label: "Decisions applied", value: fmt(nApplied), delta: nApplied ? `latest on day ${c.applied[0].day}` : "approve plan actions, then advance" }),
+  ].join("");
+  if (c.log.length) {
+    const series = [{ name: "With approved decisions", color: "--series-1", points: c.log.map((r) => [r.day, r.live]) },
+      { name: "Shadow fleet (no decisions)", color: "--series-2", points: c.log.map((r) => [r.day, r.shadow]) }];
+    legend($("#clock-legend"), series.map((x) => ({ label: x.name, color: x.color })));
+    lineChart($("#clock-chart"), series);
+  } else {
+    $("#clock-legend").innerHTML = "";
+    $("#clock-chart").innerHTML = `<p class="muted">Approve some of today's actions, then advance the clock.</p>`;
+  }
+  const evs = c.events.filter((e) => DK.base === "All" || e.base === DK.base);
+  $("#clock-events").innerHTML = evs.length ? evs.map((e) => {
+    const [lvl, word] = EVENT_KIND[e.kind] || ["neutral", e.kind];
+    return `<li><span class="d">Day ${e.day}</span><span>${badge(lvl, word)}</span><span>${esc(e.text)}</span></li>`;
+  }).join("") : `<li><span class="muted">No events yet.</span></li>`;
+  $("#clock-log").querySelector("summary").textContent = c.events_total > c.events.length
+    ? `Station log (latest ${evs.length} of ${c.events_total} events)` : `Station log (${evs.length} events)`;
+  for (const id of ["#adv1", "#adv7"]) $(id).disabled = DK.view?.state?.status === "building";
+}
+async function advanceClock(days) {
+  for (const id of ["#adv1", "#adv7", "#clock-reset"]) $(id).disabled = true;
+  try {
+    const before = DK.clock ? DK.clock.applied.length : 0;
+    DK.clock = await api("/api/clock/advance", { days });
+    const applied = DK.clock.applied.length - before;
+    toast(`Day ${DK.clock.day}: ${applied ? applied + " approved action" + (applied > 1 ? "s" : "") + " applied, " : ""}a new plan is being prepared`);
+    DK.outcome = null; $("#outcome-fan").innerHTML = ""; $("#outcome-legend").innerHTML = ""; $("#outcome-summary").textContent = "";
+    S.ledger = await api("/api/ledger");
+    renderClock();
+    await loadPlan();
+  } catch (e) { toast("Not advanced: " + e.message); }
+  finally { $("#clock-reset").disabled = false; renderClock(); }
+}
+async function resetClock() {
+  try {
+    DK.clock = await api("/api/clock/reset", {});
+    toast("Clock reset to day 0");
+    DK.outcome = null; $("#outcome-fan").innerHTML = ""; $("#outcome-summary").textContent = "";
+    renderClock(); await loadPlan();
+  } catch (e) { toast("Not reset: " + e.message); }
 }
 
 // ------------------------------------------------------------ SAARTHI snag entry
@@ -840,7 +949,7 @@ async function renderSaarthi() {
     $("#clear-btn").addEventListener("click", snReset);
     micSetup();
     await loadEntries();
-  } else renderEntries();
+  } else loadEntries().catch(() => renderEntries());
 }
 
 // ------------------------------------------------------------ shell

@@ -24,6 +24,8 @@ from nirantar.dhanvantari.tier_c import fit_tier_c
 from nirantar.pipeline import clean_json, fan_payload
 from nirantar.records import to_frames
 from nirantar.saarthi.service import SaarthiDesk
+from nirantar.chanakya.desk import action_from_item
+from nirantar.sanjaya.clock import OperationsClock
 from nirantar.sanjaya.ensemble import P0, P2, P3, run_ensemble, summarise
 from nirantar.sanjaya.twin import Scenario, Twin
 from nirantar.satya.quality import check_spells, dq_scores
@@ -52,6 +54,7 @@ class Console:
         self._sim = None
         self._desk = None
         self._planner = None
+        self._clock = None
 
     # -- simulation context (built once, on first use) -----------------
     def sim_context(self) -> dict:
@@ -104,20 +107,65 @@ class Console:
 
     # -- SAARTHI snag desk -----------------------------------------------
     def desk(self) -> SaarthiDesk:
+        ctx, clk = self.sim_context(), self.clock()
+        with self._lock:
+            if self._desk is None or self._desk.day != clk.day:
+                self._desk = SaarthiDesk(ctx["world"], clk.snapshot, ctx["frailty"], ctx["dm"].rogue_flags,
+                                         self.report["drishti"]["table"], self.ledger, self.signer, day=clk.day)
+            return self._desk
+
+    # -- operations clock ------------------------------------------------
+    def clock(self) -> OperationsClock:
         ctx = self.sim_context()
         with self._lock:
-            if self._desk is None:
-                self._desk = SaarthiDesk(ctx["world"], ctx["start"], ctx["frailty"], ctx["dm"].rogue_flags,
-                                         self.report["drishti"]["table"], self.ledger, self.signer)
-            return self._desk
+            if self._clock is None:
+                self._clock = OperationsClock(ctx["world"], P0, ctx["start"], self.dir / "live" / "clock.pkl")
+            return self._clock
+
+    def clock_view(self) -> dict:
+        v = self.clock().view()
+        v["plan_status"] = self.planner().state["status"]
+        return v
+
+    def advance(self, body: dict) -> dict:
+        days = int(body.get("days", 1))
+        if days not in (1, 7):
+            raise ValueError("advance 1 or 7 days")
+        planner, clk = self.planner(), self.clock()
+        if planner.state["status"] == "building":
+            raise ValueError("a plan is being prepared; advance when it is ready")
+        items = planner.approved_unapplied(clk.applied_seqs())
+        acts = tuple(action_from_item(it) for it in items)
+        meta = tuple({"recommendation_seq": it["ledger_seq"], "text": it["text"], "kind": it["kind"],
+                      "plan_id": planner.plan["plan_id"]} for it in items)
+        with self._lock:
+            d0 = clk.day
+            clk.advance(days, acts, meta)
+            for it in items:
+                self.ledger.append("execution", {"recommendation_seq": it["ledger_seq"], "action": it["label"],
+                                                 "applied_on_day": d0, "via": "operations clock"}, self.signer)
+        self.planner().build_async()                 # a fresh plan for the new day
+        return self.clock_view()
+
+    def reset_clock(self) -> dict:
+        clk = self.clock()
+        if self.planner().state["status"] == "building":
+            raise ValueError("a plan is being prepared; reset when it is ready")
+        with self._lock:
+            clk.reset()
+            for f in (self.dir / "live").glob("plan_day*.json"):
+                f.unlink()
+            self._clock = self._planner = self._desk = None
+        return self.clock_view()
 
     # -- CHANAKYA decision desk ---------------------------------------------
     def planner(self) -> PlanDesk:
-        ctx = self.sim_context()
+        ctx, clk = self.sim_context(), self.clock()
         with self._lock:
-            if self._planner is None:
-                self._planner = PlanDesk(ctx["world"], ctx["start"], ctx["dm"], ctx["n_fail"], ctx["dq"],
-                                         self.ledger, self.signer, self.dir / "plan.json", **self.plan_kwargs)
+            if self._planner is None or self._planner.day != clk.day:
+                path = self.dir / "plan.json" if clk.day == 0 else self.dir / "live" / f"plan_day{clk.day}.json"
+                self._planner = PlanDesk(ctx["world"], clk.snapshot, ctx["dm"], ctx["n_fail"], ctx["dq"],
+                                         self.ledger, self.signer, path, day=clk.day, **self.plan_kwargs)
             return self._planner
 
     def saarthi_confirm(self, body: dict) -> dict:
@@ -144,7 +192,11 @@ class Console:
         reason = str(body.get("reason_code", "WEB_CONSOLE"))[:64]
         role = body.get("role")
         role = str(role)[:40] if role else None
-        self.planner().check_decision(seq, verdict, role, reason)
+        planner = self.planner()
+        rec_plan = self.ledger.entries[seq]["payload"].get("plan_id")
+        if rec_plan and (planner.plan is None or rec_plan != planner.plan.get("plan_id")):
+            raise ValueError("that plan is no longer current; decide on today's plan")
+        planner.check_decision(seq, verdict, role, reason)
         payload = {"recommendation_seq": seq, "verdict": verdict, "reason_code": reason, "via": "web console"}
         if role:
             payload["role"] = role
@@ -196,6 +248,8 @@ def make_handler(console: Console):
                 return self._json(console.ledger_view())
             if path == "/api/plan":
                 return self._json(console.planner().view())
+            if path == "/api/clock":
+                return self._json(console.clock_view())
             if path == "/api/saarthi/options":
                 return self._json(console.desk().options())
             if path == "/api/saarthi/entries":
@@ -221,6 +275,10 @@ def make_handler(console: Console):
                     return self._json(console.decide(body))
                 if path == "/api/ledger/tamper-demo":
                     return self._json(console.tamper_demo(body))
+                if path == "/api/clock/advance":
+                    return self._json(console.advance(body))
+                if path == "/api/clock/reset":
+                    return self._json(console.reset_clock())
                 if path == "/api/plan/build":
                     return self._json(console.planner().build_async())
                 if path == "/api/plan/outcome":

@@ -160,6 +160,7 @@ class Twin:
         start: Optional[dict] = None,
         record: bool = False,
         type_weights: Optional[dict[str, float]] = None,
+        resume: bool = False,
     ):
         if (policy.predictive_swap or policy.smart_routing or policy.rogue_quarantine) and decision_model is None:
             raise ValueError(f"policy {policy.name} needs a decision model")
@@ -169,6 +170,7 @@ class Twin:
         self.seed = seed
         self.scenario = scenario
         self.actions = actions
+        self.resume = resume              # continue exactly: remaining work, waiting times, queue order
         self.dm = decision_model
         self.record = record
         self.type_weights = type_weights or {f: ft.role_weight for f, ft in world.fleets.items()}
@@ -263,6 +265,12 @@ class Twin:
                 tail["since_insp"] = float(krng(self.seed, "insp0", tail["idx"]).uniform(0, tail["ft"].inspection_interval_fh))
         else:
             self._load_snapshot(start)
+        waited: dict[tuple[str, tuple], float] = {}
+        if start is not None and self.resume:
+            for w in start.get("waiting", []):
+                waited[(w["tail"], (w["pn"], int(w["pos"]) - 1))] = float(w["days"])
+            for tail in self.tails:
+                tail["work_until"] = float(start.get("work_left", {}).get(tail["id"], 0.0))
 
         for tail in self.tails:
             for slot, sid in tail["inst"].items():
@@ -270,8 +278,12 @@ class Twin:
                 tail["rem"][slot] = self._sample_life(tail, sid, slot)
             for slot in tail["slots"]:
                 if slot not in tail["inst"]:
-                    self.backorders[(tail["base"], slot[0])].append((tail["idx"], slot, 0.0))
+                    t0 = -waited.get((tail["id"], slot), 0.0)
+                    self.backorders[(tail["base"], slot[0])].append((tail["idx"], slot, t0))
             self._refresh(tail)
+        if waited:                                    # first come, first served across the step boundary
+            for key, q in self.backorders.items():
+                self.backorders[key] = deque(sorted(q, key=lambda b: b[2]))
 
         if start is not None:
             for item in start["pipeline"]:
@@ -302,6 +314,14 @@ class Twin:
         return g + "#OH" if kind == "OH" else g
 
     def _load_snapshot(self, s: dict) -> None:
+        extra = len(s["V"]) - len(self.V)
+        if extra > 0:                                  # units bought in an earlier run
+            self.V = np.zeros(len(s["V"]))
+            self.X = np.zeros(len(s["V"]))
+            self.z = np.ones(len(s["V"]))
+            self.install_count = np.append(self.install_count, np.zeros(extra, dtype=int))
+            self.repair_count = np.append(self.repair_count, np.zeros(extra, dtype=int))
+            self.new_pn = {int(k): v for k, v in s.get("new_pn", {}).items()}
         self.V[:] = s["V"]
         self.X[:] = s["X"]
         self.z[:] = s["z"]
@@ -776,6 +796,7 @@ class Twin:
             "since_insp": {t["id"]: t["since_insp"] for t in self.tails},
             "stock": {k: list(v) for k, v in self.stock.items() if v},
             "pipeline": pipeline,
+            "new_pn": dict(getattr(self, "new_pn", {})),
             "regimes": {c: int(st[min(int(self.H), len(st) - 1)]) for c, st in self.regime_state.items()},
             # for planning displays only (not used when continuing a run)
             "waiting": [{"tail": self.tails[i]["id"], "pn": slot[0], "pos": slot[1] + 1, "days": self.H - t0}

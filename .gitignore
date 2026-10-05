@@ -10,3 +10,6 @@ dist/
 *.key
 
 *.bundle
+
+# operations-clock state and day plans of a local console
+experiments/results/live/
