@@ -8,3 +8,5 @@ dist/
 
 # signing keys of local console nodes (never commit private keys)
 *.key
+
+*.bundle
