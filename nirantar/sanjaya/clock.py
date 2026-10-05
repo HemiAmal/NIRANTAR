@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from nirantar.bharat_fleet.world import World
-from nirantar.sanjaya.twin import Action, Policy, Twin
+from nirantar.sanjaya.twin import Action, Policy, Scenario, Twin
 
 
 def _daily(world: World, r) -> tuple[np.ndarray, np.ndarray]:
@@ -41,6 +41,7 @@ class OperationsClock:
                 self.state = pickle.load(f)
         else:
             self.state = {"day": 0, "live": start, "shadow": start, "log": [], "events": [], "applied": []}
+        self.state.setdefault("shocks", [])
 
     @property
     def day(self) -> int:
@@ -60,15 +61,40 @@ class OperationsClock:
             pickle.dump(self.state, f)
         os.replace(tmp, self.path)
 
+    # ------------------------------------------------------------ supply disruptions
+
+    def disrupt(self, country: str, days: int) -> dict:
+        """Declare a supplier's shipping, customs and payments disrupted from today for ``days`` days."""
+        m = self.w.regimes.get(country)
+        if m is None or "disrupted" not in m.states:
+            raise ValueError(f"no disruption model for supplier {country!r}")
+        if not 1 <= days <= 365:
+            raise ValueError("a disruption lasts 1 to 365 days")
+        shock = {"country": country, "start": self.day, "end": self.day + int(days)}
+        self.state["shocks"].append(shock)
+        self.state["events"].append({"day": self.day, "kind": "shock", "base": None, "tail": None,
+                                     "text": f"{country} supply disrupted from day {shock['start']} to day {shock['end']}"})
+        self._save()
+        return shock
+
+    def scenario(self, d0: int | None = None, days: int = 365) -> Scenario:
+        """Declared disruptions as a scenario relative to day ``d0`` (default: today)."""
+        d0 = self.day if d0 is None else d0
+        forced = tuple((sh["country"], "disrupted", float(max(sh["start"] - d0, 0)), float(sh["end"] - d0))
+                       for sh in self.state["shocks"] if sh["end"] > d0 and sh["start"] < d0 + days)
+        return Scenario("declared disruption" if forced else "normal", forced)
+
     def advance(self, days: int, actions: tuple[Action, ...] = (), meta: tuple[dict, ...] = ()) -> dict:
         """Advance both fleets ``days`` days; ``actions`` (with ``meta`` for the log) go to the live fleet."""
         if not 1 <= days <= 30:
             raise ValueError("advance 1 to 30 days at a time")
         st, d0 = self.state, self.day
         seed = self.seed0 + d0
+        scen = self.scenario(d0, days)
         live = Twin(self.w, self.policy, days, seed=seed, actions=actions, start=st["live"], record=True,
-                    resume=True).run()
-        shadow = Twin(self.w, self.policy, days, seed=seed, start=st["shadow"], record=True, resume=True).run()
+                    resume=True, scenario=scen).run()
+        shadow = Twin(self.w, self.policy, days, seed=seed, start=st["shadow"], record=True, resume=True,
+                      scenario=scen).run()
         av_l, w_l = _daily(self.w, live)
         av_s, w_s = _daily(self.w, shadow)
         for i in range(days):
@@ -97,6 +123,9 @@ class OperationsClock:
             events.append({"day": d0 + days, "kind": "waiting", "tail": t, "base": t.split("-")[1],
                            "text": f"{t}: waiting for {name}"})
         events.sort(key=lambda e: (e["day"], {"applied": 0, "failure": 1, "waiting": 2, "restored": 3}[e["kind"]]))
+        for i in range(days):
+            st["log"][-days + i]["disrupted"] = [sh["country"] for sh in st["shocks"]
+                                                 if sh["start"] < d0 + i + 1 <= sh["end"]]
         st["events"].extend(events)
         st["live"], st["shadow"] = live.snapshot, shadow.snapshot
         st["day"] = d0 + days
@@ -112,6 +141,9 @@ class OperationsClock:
         return {
             "day": self.day, "log": log, "events": st["events"][-n_events:][::-1], "applied": st["applied"][::-1],
             "events_total": len(st["events"]),
+            "shocks": [dict(sh, active=sh["start"] <= self.day < sh["end"]) for sh in st["shocks"]],
+            "regimes": {c: self.w.regimes[c].states[i] for c, i in st["live"].get("regimes", {}).items()
+                        if c in self.w.regimes and len(self.w.regimes[c].states) > 1},
             "waad_gained": round(gained, 1),
             "aircraft_days_gained": round(sum((r["live"] - r["shadow"]) for r in log) * len(self.w.tails), 1),
             "waiting_live": waiting_live, "waiting_shadow": waiting_shadow,

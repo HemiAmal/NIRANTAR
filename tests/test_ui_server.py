@@ -152,3 +152,21 @@ def test_clock_applies_approved_actions_and_retires_the_old_plan(console_url):
     assert code == 200 and c["day"] == 0 and c["log"] == []
     assert json.loads(get(url + "/api/plan")[1])["plan"]["plan_id"] == plan_id
     assert json.loads(get(url + "/api/ledger")[1])["failed"] == []
+
+
+def test_declare_disruption_replans_for_the_crisis(console_url):
+    import time
+    url, console = console_url
+    assert post(url + "/api/clock/disrupt", {"country": "XX", "days": 120})[0] == 400
+    assert post(url + "/api/clock/disrupt", {"country": "RU", "days": 45})[0] == 400
+    code, c = post(url + "/api/clock/disrupt", {"country": "RU", "days": 120})
+    assert code == 200 and c["shocks"][-1]["active"]
+    assert console.ledger.entries[-1]["kind"] == "scenario"
+    for _ in range(240):
+        v = json.loads(get(url + "/api/plan")[1])
+        if v["state"]["status"] in ("ready", "error"):
+            break
+        time.sleep(0.5)
+    assert v["state"]["status"] == "ready" and v["plan"]["scenario"][0][:2] == ["RU", "disrupted"]
+    assert post(url + "/api/clock/reset", {})[0] == 200
+    assert json.loads(get(url + "/api/clock")[1])["shocks"] == []

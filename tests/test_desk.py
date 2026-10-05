@@ -152,3 +152,19 @@ def test_plan_desk_signs_enforces_authority_and_reloads(world, start, model, tmp
     out = again.outcome("approved", n_seeds=3)
     assert out["n_actions"] == 1 and len(out["fan_plan"]["p50"]) > 0
     assert Ledger(tmp_path / "ledger.jsonl").verify_all() == []
+
+
+def test_crisis_routing_candidates(world, start, model):
+    from nirantar.sanjaya.twin import Scenario
+    shock = Scenario("ru", (("RU", "disrupted", 0.0, 120.0),))
+    brd = board(world, start, model, scenario=shock)
+    cands = candidates(world, start, model, brd, 90, shock)
+    routes = {(c.action.pn, c.action.agency) for c in cands if c.action.kind == "route"}
+    ru_default = {pn for pn, p in world.pns.items() if p.default_agency == "OEM-RU"}
+    assert {pn for pn, _ in routes} == ru_default
+    assert all(world.agencies[g].country == "IN" for _, g in routes)
+    text = next(c.reason for c in cands if c.action.kind == "route")
+    assert "disrupted" in text and "less durable" in text
+    calm = Scenario("calm", (("RU", "normal", 0.0, 120.0),))
+    brd = board(world, start, model, scenario=calm)
+    assert not [c for c in candidates(world, start, model, brd, 90, calm) if c.action.kind == "route"]

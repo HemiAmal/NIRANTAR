@@ -433,7 +433,8 @@ function renderDesk() {
   const v = DK.view, P = v.plan, brd = P.board, base = DK.base;
   const inBase = (b) => base === "All" || b === base;
   if (v.state.status !== "building") {
-    $("#plan-status").textContent = `${P.plan_id} · plan for ${P.day ? "day " + P.day : "today (day 0)"} · prepared ${new Date(P.created * 1000).toLocaleString()} · ` +
+    const scen = (P.scenario || []).map((f) => `${f[0]} supply disrupted to day ${(P.day || 0) + f[3]}`).join(", ");
+    $("#plan-status").textContent = `${P.plan_id} · plan for ${P.day ? "day " + P.day : "today (day 0)"}${scen ? " under declared disruption (" + scen + ")" : ""} · prepared ${new Date(P.created * 1000).toLocaleString()} · ` +
       `${P.n_candidates} candidate actions priced on ${P.seeds} paired futures over ${P.horizon_days} days against today's procedures.`;
   }
   // tiles
@@ -507,7 +508,9 @@ function renderDesk() {
       const [lvl, txt] = GRADE[it.grade] || ["neutral", it.grade];
       const d = it.decision;
       let cell;
-      if (d && d.verdict !== "defer") {
+      if (v.state.status === "building" && !(d && d.verdict !== "defer")) {
+        cell = `<div class="needs">Re-planning… decide on the new plan</div>`;
+      } else if (d && d.verdict !== "defer") {
         const [l, w] = VERDICT_WORD[d.verdict];
         cell = `${badge(l, w)}<div class="small">${esc(d.role || "")} · ${esc(REASON_LABEL[d.reason_code] || d.reason_code)} · #${d.seq}</div>`;
       } else if (!canDecide(it, role)) {
@@ -588,6 +591,7 @@ async function renderDeskTab() {
     $("#adv1").addEventListener("click", () => advanceClock(1));
     $("#adv7").addEventListener("click", () => advanceClock(7));
     $("#clock-reset").addEventListener("click", resetClock);
+    $("#shock-btn").addEventListener("click", declareShock);
     loadClock().catch((e) => toast("Clock: " + e.message));
     $("#outcome-all-btn").addEventListener("click", () => runOutcome("all"));
     if (DK.view.plan) renderDesk();
@@ -598,10 +602,10 @@ async function renderDeskTab() {
 }
 
 // ------------------------------------------------------------ operations clock
-const EVENT_KIND = { applied: ["neutral", "Decision applied"], failure: ["critical", "Failure"],
+const EVENT_KIND = { shock: ["critical", "Supply disruption"], applied: ["neutral", "Decision applied"], failure: ["serious", "Failure"],
   waiting: ["warning", "Waiting for parts"], restored: ["good", "Back on the line"] };
 
-function lineChart(container, series, { yFmt = (v) => pct(v, 0) } = {}) {
+function lineChart(container, series, { yFmt = (v) => pct(v, 0), bands = [] } = {}) {
   const W = Math.max(container.clientWidth, 320), H = 260, m = { l: 46, r: 16, t: 12, b: 30 };
   const s = svgRoot(container, W, H);
   const xs = series[0].points.map((p) => p[0]), maxX = Math.max(...xs), minX = Math.min(0, ...xs);
@@ -613,6 +617,13 @@ function lineChart(container, series, { yFmt = (v) => pct(v, 0) } = {}) {
     el("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), class: "grid" }, s);
     el("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, s).textContent = yFmt(t);
   }
+  for (const [b0, b1, label] of bands) {          // shaded periods, e.g. a declared supply disruption
+    const x0 = X(Math.max(b0, minX)), x1 = X(Math.min(b1, maxX));
+    if (x1 <= x0) continue;
+    el("rect", { x: x0, y: m.t, width: x1 - x0, height: H - m.t - m.b, class: "band" }, s);
+    el("text", { x: x0 + 6, y: m.t + 12, class: "band-label" }, s).textContent = label;
+  }
+  for (const t of niceTicks(lo, hi, 4)) el("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), class: "grid" }, s);
   el("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, class: "axis" }, s);
   for (const t of niceTicks(minX, maxX, W < 600 ? 4 : 8).filter((t) => Number.isInteger(t))) {
     el("text", { x: X(t), y: H - m.b + 18, "text-anchor": t === minX ? "start" : t === maxX ? "end" : "middle" }, s).textContent = t === 0 ? "Today" : `Day ${t}`;
@@ -661,12 +672,20 @@ function renderClock() {
     const series = [{ name: "With approved decisions", color: "--series-1", points: c.log.map((r) => [r.day, r.live]) },
       { name: "Shadow fleet (no decisions)", color: "--series-2", points: c.log.map((r) => [r.day, r.shadow]) }];
     legend($("#clock-legend"), series.map((x) => ({ label: x.name, color: x.color })));
-    lineChart($("#clock-chart"), series);
+    const SUP = { RU: "Russian", FR: "French" };
+    const bands = (c.shocks || []).map((sh) => [sh.start, sh.end, `${SUP[sh.country] || sh.country} supply disrupted`]);
+    lineChart($("#clock-chart"), series, { bands });
   } else {
     $("#clock-legend").innerHTML = "";
     $("#clock-chart").innerHTML = `<p class="muted">Approve some of today's actions, then advance the clock.</p>`;
   }
-  const evs = c.events.filter((e) => DK.base === "All" || e.base === DK.base);
+  const evs = c.events.filter((e) => DK.base === "All" || !e.base || e.base === DK.base);
+  const SUPN = { RU: "Russian", FR: "French" };
+  const active = (c.shocks || []).filter((sh) => sh.active);
+  const regimeTxt = Object.entries(c.regimes || {}).filter(([, st]) => st !== "normal").map(([k, st]) => `${SUPN[k] || k} supply ${st}`);
+  $("#shock-status").innerHTML = active.map((sh) => badge("critical", `${SUPN[sh.country] || sh.country} supply disrupted to day ${sh.end}`)).join("") +
+    (active.length ? "" : regimeTxt.map((t) => badge("warning", t)).join(""));
+  $("#shock-btn").disabled = DK.view?.state?.status === "building";
   $("#clock-events").innerHTML = evs.length ? evs.map((e) => {
     const [lvl, word] = EVENT_KIND[e.kind] || ["neutral", e.kind];
     return `<li><span class="d">Day ${e.day}</span><span>${badge(lvl, word)}</span><span>${esc(e.text)}</span></li>`;
@@ -688,6 +707,16 @@ async function advanceClock(days) {
     await loadPlan();
   } catch (e) { toast("Not advanced: " + e.message); }
   finally { $("#clock-reset").disabled = false; renderClock(); }
+}
+async function declareShock() {
+  $("#shock-btn").disabled = true;
+  try {
+    DK.clock = await api("/api/clock/disrupt", { country: $("#shock-country").value, days: +$("#shock-days").value });
+    toast("Disruption declared and signed into the ledger; re-planning for the crisis");
+    DK.outcome = null; $("#outcome-fan").innerHTML = ""; $("#outcome-summary").textContent = "";
+    S.ledger = await api("/api/ledger");
+    renderClock(); await loadPlan();
+  } catch (e) { toast("Not declared: " + e.message); renderClock(); }
 }
 async function resetClock() {
   try {

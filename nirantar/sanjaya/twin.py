@@ -291,13 +291,15 @@ class Twin:
                 kind, dt = item.pop("type"), item.pop("dt", 0.0)
                 fast = item.get("sid") in self.expedited
                 if kind == "arrive":
-                    self._push(min(dt, EXPEDITE_LEG_DAYS) if fast else dt, "ARRIVE", (item["base"], item["sid"]))
+                    leg = self._express_days(self._last_agency(item["sid"]))
+                    self._push(min(dt, leg) if fast else dt, "ARRIVE", (item["base"], item["sid"]))
                 elif kind == "inrepair":
                     item["start"] = 0.0
                     self.busy[item["agency"]] += 1
                     self._push(dt * EXPEDITE_TAT_FACTOR if fast else dt, "REPAIR_DONE", item)
                 else:
-                    self._push(min(dt, EXPEDITE_LEG_DAYS) if fast else dt, "AG_ARRIVE", item)
+                    leg = self._express_days(item["agency"])
+                    self._push(min(dt, leg) if fast else dt, "AG_ARRIVE", item)
             for key in list(self.backorders):
                 self._try_fill(key[0], key[1])
 
@@ -687,7 +689,16 @@ class Twin:
 
     def _leg(self, g: str, sid: int) -> float:
         d = self.transit_days(g)
-        return min(d, EXPEDITE_LEG_DAYS) if sid in self.expedited else d
+        return min(d, self._express_days(g)) if sid in self.expedited else d
+
+    def _express_days(self, g: Optional[str]) -> float:
+        """Air freight is faster, but customs and payment delays of a stressed supplier still apply."""
+        ag = self.agencies.get(g) if g else None
+        return EXPEDITE_LEG_DAYS * (self.regime_multiplier(ag.country, self.t) if ag else 1.0)
+
+    def _last_agency(self, sid: int) -> Optional[str]:
+        h = self.hist.get(sid)
+        return h[-1][0] if h else None
 
     def _on_AG_ARRIVE(self, job: dict) -> None:
         self.queues[job["agency"]].append(job)
