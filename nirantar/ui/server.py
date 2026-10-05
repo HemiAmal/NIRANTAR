@@ -22,6 +22,7 @@ from nirantar.chitragupta.ledger import Ledger, Signer
 from nirantar.dhanvantari.tier_c import fit_tier_c
 from nirantar.pipeline import clean_json, fan_payload
 from nirantar.records import to_frames
+from nirantar.saarthi.service import SaarthiDesk
 from nirantar.sanjaya.ensemble import P0, P2, P3, run_ensemble, summarise
 from nirantar.sanjaya.twin import Scenario, Twin
 from nirantar.sushruta.agency import flag_rogues, serial_frailty
@@ -46,6 +47,7 @@ class Console:
         self.signer = Signer.generate("web-console")
         self._lock = threading.Lock()
         self._sim = None
+        self._desk = None
 
     # -- simulation context (built once, on first use) -----------------
     def sim_context(self) -> dict:
@@ -57,12 +59,13 @@ class Console:
                 hist = Twin(world, P0, cfg["history_days"], seed=cfg["history_seed"], record=True).run()
                 fr = to_frames(hist.records)
                 dm = fit_tier_c(fr["spells"], family_of)
-                dm.rogue_flags = flag_rogues(serial_frailty(dm, fr["spells"], family_of), p_min=0.5)
+                frailty = serial_frailty(dm, fr["spells"], family_of)
+                dm.rogue_flags = flag_rogues(frailty, p_min=0.5)
                 start = hist.snapshot
                 vals = surrogate_provision_values(world, start, dm, cfg["horizon_days"])
                 recent = fr["spells"][fr["spells"]["install_day"] > cfg["history_days"] - 365]
                 self._sim = {
-                    "world": world, "dm": dm, "start": start, "cfg": cfg,
+                    "world": world, "dm": dm, "start": start, "cfg": cfg, "frailty": frailty,
                     "smart": tuple(greedy_portfolio(vals, cfg["budget_lakh"], cfg["horizon_days"])),
                     "cons": tuple(consumption_portfolio(world, recent, cfg["budget_lakh"])),
                 }
@@ -91,6 +94,20 @@ class Console:
                 "shock": {"country": country, "start": start_day, "days": duration},
                 "fan": fan_payload(res), "mean": s.mean, "ci95": s.ci95, "rar10": s.rar, "crar10": s.crar,
                 "by_fleet": s.by_fleet, "runtime_s": round(time.time() - t0, 2)}
+
+    # -- SAARTHI snag desk -----------------------------------------------
+    def desk(self) -> SaarthiDesk:
+        ctx = self.sim_context()
+        with self._lock:
+            if self._desk is None:
+                self._desk = SaarthiDesk(ctx["world"], ctx["start"], ctx["frailty"], ctx["dm"].rogue_flags,
+                                         self.report["drishti"]["table"], self.ledger, self.signer)
+            return self._desk
+
+    def saarthi_confirm(self, body: dict) -> dict:
+        desk = self.desk()
+        with self._lock:
+            return desk.confirm(body)
 
     # -- ledger ----------------------------------------------------------
     def ledger_view(self, limit: int = 200) -> dict:
@@ -156,6 +173,11 @@ def make_handler(console: Console):
                 return self._json(console.report)
             if path == "/api/ledger":
                 return self._json(console.ledger_view())
+            if path == "/api/saarthi/options":
+                return self._json(console.desk().options())
+            if path == "/api/saarthi/entries":
+                desk = console.desk()
+                return self._json({"entries": desk.entries[-50:][::-1], "stats": desk.stats()})
             if path in ("/", "/index.html"):
                 path = "/index.html"
             f = (STATIC / path.lstrip("/")).resolve()
@@ -168,14 +190,22 @@ def make_handler(console: Console):
             try:
                 n = int(self.headers.get("Content-Length", "0"))
                 body = json.loads(self.rfile.read(min(n, 65536)) or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("request body must be a JSON object")
                 if path == "/api/simulate":
                     return self._json(console.simulate(body))
                 if path == "/api/decision":
                     return self._json(console.decide(body))
                 if path == "/api/ledger/tamper-demo":
                     return self._json(console.tamper_demo(body))
+                if path == "/api/saarthi/parse":
+                    return self._json(console.desk().parse(body.get("text", "")))
+                if path == "/api/saarthi/check":
+                    return self._json(console.desk().check(body.get("fields", {}), body.get("findings")))
+                if path == "/api/saarthi/confirm":
+                    return self._json(console.saarthi_confirm(body))
                 return self._json({"error": "not found"}, 404)
-            except (ValueError, KeyError, json.JSONDecodeError) as exc:
+            except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
                 return self._json({"error": str(exc)}, 400)
 
     return Handler

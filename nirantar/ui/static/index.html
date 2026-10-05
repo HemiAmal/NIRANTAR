@@ -24,6 +24,7 @@
 
 <nav class="tabs" role="tablist" aria-label="Console sections">
   <button role="tab" aria-selected="true" data-tab="readiness">Readiness room</button>
+  <button role="tab" aria-selected="false" data-tab="saarthi">SAARTHI snag entry</button>
   <button role="tab" aria-selected="false" data-tab="opportunities">Opportunities</button>
   <button role="tab" aria-selected="false" data-tab="agencies">Repair agencies</button>
   <button role="tab" aria-selected="false" data-tab="signals">Fleet signals</button>
@@ -85,6 +86,63 @@
       <div class="chart" id="sim-fan"></div>
       <div id="sim-summary" class="sim-summary"></div>
     </div>
+  </section>
+
+  <!-- SAARTHI -->
+  <section id="tab-saarthi" class="tab-panel" role="tabpanel" hidden>
+    <h2>SAARTHI: speak a snag</h2>
+    <p class="lede">Say or type the snag in Hindi, Hinglish or English. SAARTHI fills a structured entry using only values
+      from the fleet register, checks it against the records, reads it back, and signs it into the ledger when you confirm.
+      If it is unsure, it asks instead of guessing.</p>
+    <div class="card">
+      <div class="capture">
+        <button id="mic" class="mic" type="button" aria-pressed="false" aria-label="Start voice input">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+        </button>
+        <div class="capture-main">
+          <div class="capture-row">
+            <label class="inline">Speech language
+              <select id="asr-lang">
+                <option value="hi-IN">हिन्दी / Hinglish (hi-IN)</option>
+                <option value="en-IN">English (en-IN)</option>
+              </select>
+            </label>
+            <span id="mic-status" class="muted" role="status"></span>
+          </div>
+          <textarea id="snag-text" rows="2" placeholder="e.g. FI B1 07, doosra hydraulic pump leak, badal diya"
+            aria-label="Snag transcript"></textarea>
+          <div class="capture-row">
+            <button id="parse-btn" class="primary" type="button">Structure it</button>
+            <span class="muted">Try:</span>
+            <div class="chips" id="examples"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="snag-grid" id="snag-card" hidden>
+      <div class="card">
+        <div class="row-between"><h3>Structured entry</h3><span id="snag-timer" class="muted"></span></div>
+        <div id="snag-fields" class="snag-fields"></div>
+        <div id="snag-findings"></div>
+        <div class="readback" id="readback"></div>
+        <div class="btns">
+          <button class="primary" id="confirm-btn" type="button">Confirm &amp; sign</button>
+          <button class="ghost" id="speak-btn" type="button">Read back aloud</button>
+          <button class="ghost" id="clear-btn" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Checked against the records</h3>
+        <ul class="checks" id="snag-checks"></ul>
+      </div>
+    </div>
+    <div class="tiles" id="snag-tiles"></div>
+    <div class="card">
+      <h3>Signed snag entries</h3>
+      <div id="snag-entries"></div>
+    </div>
+    <p class="hint">Voice uses the browser's speech recogniser (Chrome or Edge; it may send audio to the browser vendor).
+      Structuring, checks and signing run locally. A field build would use an offline recogniser such as IndicConformer.</p>
   </section>
 
   <!-- OPPORTUNITIES -->

@@ -348,6 +348,7 @@ function renderLedger() {
     L.entries.slice().reverse().map((e) => {
       const p = e.payload || {};
       const summary = e.kind === "recommendation" ? p.action : e.kind === "decision" ? `${p.verdict} recommendation #${p.recommendation_seq} (${p.reason_code})`
+        : e.kind === "snag_entry" ? `${p.tail} ${p.part}${p.position ? " pos " + p.position : ""}: ${nice(p.mode)}, ${nice(p.action)} (${p.input}${p.lang ? ", " + p.lang : ""})`
         : e.kind === "data_batch" ? `${p.spells} spells, ${p.repairs} repairs, ${p.snags} snags` : e.kind === "model_version" ? `${p.model}, ${p.n_failures} failures`
         : JSON.stringify(p).slice(0, 90);
       return `<tr><td class="num">${e.seq}</td><td>${new Date(e.ts * 1000).toLocaleString()}</td><td>${esc(e.kind)}</td><td>${esc(e.actor)}</td>
@@ -394,6 +395,260 @@ async function runSim(ev) {
   } finally { btn.disabled = false; }
 }
 
+// ------------------------------------------------------------ SAARTHI snag entry
+const SN = { opts: null, fields: null, prov: {}, heard: {}, errors: {}, choices: {}, edited: new Set(), findings: [],
+  t0: null, input: "typed", lang: "", transcript: "", res: null, timer: null, entries: null };
+const EXAMPLES = [
+  ["English", "FI B1 06, number one fuel pump pressure low, replaced"],
+  ["Hinglish", "Fighter B1 ka saat number, do number engine pe oil pump, chip detector clean, pressure kam, oil sample bhej diya"],
+  ["हिन्दी", "एफ आई बी वन जीरो सेवन, दूसरा हाइड्रोलिक पंप लीक, बदल दिया"],
+  ["Fleet signal", "HE B4 02 hydraulic pump left side corrosion, inspected"],
+  ["Wrong serial", "HE B3 02 starter generator number 1, serial 961, no output"],
+  ["Ambiguous", "B1 05 pump leaking"],
+];
+const PROV = {
+  heard: ["good", "Heard"], inferred: ["neutral", "Inferred"], ambiguous: ["warning", "Choose one"],
+  missing: ["critical", "Needed"], edited: ["neutral", "Edited"], optional: ["neutral", "Optional"],
+};
+const STATUS_WORD = { good: "OK", info: "Note", warning: "Check", critical: "Blocking" };
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null;
+
+function snStart(input) {
+  if (SN.t0 == null) SN.t0 = performance.now();
+  if (input) SN.input = input;
+  if (!SN.timer) SN.timer = setInterval(() => {
+    if (SN.t0 != null && !$("#snag-card").hidden) $("#snag-timer").textContent = `Time to log: ${Math.round((performance.now() - SN.t0) / 1000)} s`;
+  }, 500);
+}
+function snReset() {
+  Object.assign(SN, { fields: null, prov: {}, heard: {}, errors: {}, choices: {}, edited: new Set(), findings: [], t0: null,
+    input: "typed", lang: "", transcript: "", res: null });
+  $("#snag-text").value = "";
+  $("#snag-card").hidden = true;
+  $("#snag-timer").textContent = "";
+}
+
+async function snParse() {
+  const text = $("#snag-text").value.trim();
+  if (!text) { $("#snag-text").focus(); return; }
+  snStart();
+  $("#parse-btn").disabled = true;
+  try {
+    const r = await api("/api/saarthi/parse", { text });
+    const d = r.draft;
+    SN.transcript = text; SN.lang = d.lang; SN.findings = d.findings.concat(d.also_mentioned.map((x) => "Also mentioned: " + x));
+    SN.edited = new Set();
+    SN.prov = {}; SN.heard = {}; SN.errors = {}; SN.choices = {};
+    for (const [k, f] of Object.entries(d.fields)) {
+      SN.prov[k] = f.source; SN.heard[k] = f.heard; SN.errors[k] = f.error;
+      if (f.source === "ambiguous") SN.choices[k] = f.options;
+    }
+    SN.fields = { ...r.fields };
+    for (const k of r.inferred || []) SN.prov[k] = "inferred";
+    if (SN.prov.position === "missing" && r.fields.position) SN.prov.position = "inferred";
+    SN.res = r;
+    $("#snag-card").hidden = false;
+    renderSnag();
+  } catch (e) { toast("Could not structure: " + e.message); }
+  finally { $("#parse-btn").disabled = false; }
+}
+
+async function snRecheck() {
+  try {
+    const r = await api("/api/saarthi/check", { fields: SN.fields, findings: SN.findings });
+    for (const k of r.inferred || []) if (!SN.edited.has(k)) SN.prov[k] = "inferred";
+    SN.fields = { ...SN.fields, ...r.fields };
+    SN.res = r;
+    renderSnag();
+  } catch (e) { toast(e.message); }
+}
+
+function snOnChange(key, value) {
+  snStart();
+  SN.fields[key] = value === "" ? null : (key === "position" || key === "serial") ? Number(value) : value;
+  SN.edited.add(key); SN.prov[key] = "edited"; SN.errors[key] = ""; delete SN.choices[key];
+  const part = SN.opts.parts.find((p) => p.pn === SN.fields.part);
+  const tail = SN.opts.tails.find((t) => t.id === SN.fields.tail);
+  if (key === "tail" && part && tail && part.fleet !== tail.fleet) { SN.fields.part = null; SN.fields.mode = null; SN.fields.position = null; SN.prov.part = "missing"; }
+  if (key === "part") { SN.fields.position = part && part.positions === 1 ? 1 : null; SN.fields.mode = SN.fields.mode && part && SN.opts.modes[part.family].some((m) => m.id === SN.fields.mode) ? SN.fields.mode : null; }
+  snRecheck();
+}
+
+function fieldBox(key, label, control, required = true) {
+  const v = SN.fields[key];
+  let p = SN.prov[key] || "missing";
+  if (p === "missing" && (v != null && v !== "")) p = "inferred";
+  if (p === "missing" && !required) p = "optional";
+  const [lvl, word] = PROV[p];
+  const need = required && (v == null || v === "");
+  const heard = SN.errors[key] ? `<span class="heard" style="color:var(--critical)">${esc(SN.errors[key])}</span>`
+    : SN.heard[key] && p !== "edited" ? `<span class="heard">heard: “${esc(SN.heard[key])}”</span>` : "";
+  let opts = SN.choices[key];
+  if (opts && key === "part") {
+    const tail = SN.opts.tails.find((t) => t.id === SN.fields.tail);
+    if (tail) opts = opts.filter((pn) => (SN.opts.parts.find((x) => x.pn === pn) || {}).fleet === tail.fleet);
+  }
+  const choices = opts && opts.length ? `<div class="chips">${opts.map((o) => `<button type="button" data-choose="${esc(key)}" data-val="${esc(o)}">${esc(choiceLabel(key, o))}</button>`).join("")}</div>` : "";
+  return `<div class="sf${need ? " need" : ""}"><div class="sf-head"><label for="sf-${key}">${esc(label)}</label><span class="prov"><span class="ic ${lvl}" style="width:7px;height:7px;border-radius:50%;display:inline-block"></span>${word}</span></div>
+    ${control}${heard}${choices}</div>`;
+}
+function choiceLabel(key, v) {
+  if (key === "part") { const p = SN.opts.parts.find((x) => x.pn === v); return p ? `${p.name} (${p.pn})` : v; }
+  return v;
+}
+function sel(key, opts, placeholder = "Choose…") {
+  return `<select id="sf-${key}" data-field="${key}"><option value="">${esc(placeholder)}</option>${opts}</select>`;
+}
+
+function renderSnag() {
+  const f = SN.fields, o = SN.opts;
+  const tail = o.tails.find((t) => t.id === f.tail);
+  const part = o.parts.find((p) => p.pn === f.part);
+  const bases = [...new Set(o.tails.map((t) => t.base + "|" + t.fleet))];
+  const tailOpts = bases.map((bf) => {
+    const [b, fl] = bf.split("|");
+    return `<optgroup label="${esc(b)} · ${esc(o.fleets[fl])}">${o.tails.filter((t) => t.base === b && t.fleet === fl)
+      .map((t) => `<option value="${esc(t.id)}">${esc(t.id)}</option>`).join("")}</optgroup>`;
+  }).join("");
+  const partOpts = o.parts.filter((p) => !tail || p.fleet === tail.fleet).map((p) => `<option value="${esc(p.pn)}">${esc(p.pn)} · ${esc(p.name)}</option>`).join("");
+  const posOpts = part ? Array.from({ length: part.positions }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("") : "";
+  const modes = part ? o.modes[part.family] : Object.values(o.modes).flat().filter((m, i, a) => a.findIndex((x) => x.id === m.id) === i);
+  const modeOpts = modes.map((m) => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join("");
+  const actOpts = o.actions.map((a) => `<option value="${esc(a.id)}">${esc(a.label)}</option>`).join("");
+  const onRecord = SN.res && SN.res.serial_on_record;
+  $("#snag-fields").innerHTML = [
+    fieldBox("tail", "Aircraft", sel("tail", tailOpts)),
+    fieldBox("part", "Part", sel("part", partOpts)),
+    fieldBox("position", "Position", sel("position", posOpts, part ? "Choose…" : "Pick a part first")),
+    fieldBox("mode", "Finding", sel("mode", modeOpts)),
+    fieldBox("action", "Action taken", sel("action", actOpts)),
+    fieldBox("serial", "Serial number (data plate)", `<input id="sf-serial" data-field="serial" type="number" min="0" inputmode="numeric"
+      value="${f.serial ?? ""}" placeholder="${onRecord != null ? "records: " + onRecord : "optional"}">`, false),
+  ].join("");
+  for (const k of ["tail", "part", "position", "mode", "action"]) { const s = $("#sf-" + k); if (s) s.value = f[k] ?? ""; }
+  $("#snag-fields").querySelectorAll("[data-field]").forEach((n) => n.addEventListener("change", () => snOnChange(n.dataset.field, n.value)));
+  $("#snag-fields").querySelectorAll("[data-choose]").forEach((b) => b.addEventListener("click", () => snOnChange(b.dataset.choose, b.dataset.val)));
+
+  $("#snag-findings").innerHTML = SN.findings.length ? `<ul class="findings">${SN.findings.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  const r = SN.res;
+  $("#readback").innerHTML = `<div><b>Read-back:</b> ${esc(r.readback.en)}</div><div class="rb-hi">${esc(r.readback.hinglish)}</div>`;
+  const order = { critical: 0, warning: 1, info: 2, good: 3 };
+  $("#snag-checks").innerHTML = r.checks.slice().sort((a, b) => order[a.status] - order[b.status]).map((c) =>
+    `<li><span class="ic ${c.status}"></span><div><div class="ct">${esc(c.title)}<span class="cs">${STATUS_WORD[c.status]}</span></div>${c.detail ? `<div class="cd">${esc(c.detail)}</div>` : ""}</div></li>`).join("");
+  const btn = $("#confirm-btn");
+  btn.disabled = !r.ready;
+  btn.title = r.ready ? "" : "Resolve the blocking items first";
+}
+
+async function snConfirm() {
+  const secs = SN.t0 != null ? (performance.now() - SN.t0) / 1000 : null;
+  $("#confirm-btn").disabled = true;
+  try {
+    const e = await api("/api/saarthi/confirm", { fields: SN.fields, findings: SN.findings, transcript: SN.transcript,
+      lang: SN.lang, input: SN.input, entry_seconds: secs, edited_fields: [...SN.edited] });
+    const swap = e.removed_serial != null ? ` · S/N ${e.removed_serial} out${e.installed_serial != null ? `, S/N ${e.installed_serial} fitted` : ""}` : "";
+    toast(`Signed as ledger entry #${e.seq}${swap}`);
+    snReset();
+    S.ledger = await api("/api/ledger");
+    await loadEntries();
+  } catch (err) { toast("Not signed: " + err.message); $("#confirm-btn").disabled = false; }
+}
+
+async function loadEntries() {
+  SN.entries = await api("/api/saarthi/entries");
+  renderEntries();
+}
+function renderEntries() {
+  if (!SN.entries) return;
+  const { entries, stats } = SN.entries;
+  const hf = stats.entries ? stats.hands_free / stats.entries : null;
+  $("#snag-tiles").innerHTML = [
+    tile({ label: "Snags signed", value: fmt(stats.entries), delta: `${fmt(stats.voice)} by voice` }),
+    tile({ label: "Median time to log", value: stats.median_seconds != null ? fmt(stats.median_seconds) + " s" : "–",
+      delta: "target under 30 s", up: stats.median_seconds != null && stats.median_seconds < 30 }),
+    tile({ label: "Signed without manual correction", value: hf != null ? pct(hf, 0) : "–", delta: "fields left as SAARTHI heard them" }),
+  ].join("");
+  const MODE = Object.fromEntries(Object.values(SN.opts.modes).flat().map((m) => [m.id, m.label]));
+  const ACT = Object.fromEntries(SN.opts.actions.map((a) => [a.id, a.label]));
+  $("#snag-entries").innerHTML = entries.length ? `<table><thead><tr><th class="num">#</th><th>Time</th><th>Aircraft</th><th>Part</th><th>Finding</th><th>Action</th>
+    <th>Units</th><th>Input</th><th class="num">Seconds</th><th>Hash</th></tr></thead><tbody>` + entries.map((e) => `<tr>
+      <td class="num">${e.seq}</td><td>${new Date(e.ts * 1000).toLocaleTimeString()}</td><td>${esc(e.tail)}</td>
+      <td>${esc(e.part)}${e.position ? " · pos " + e.position : ""}</td><td>${esc(MODE[e.mode] || e.mode)}</td><td>${esc(ACT[e.action] || e.action)}</td>
+      <td>${e.removed_serial != null ? "out " + e.removed_serial : ""}${e.installed_serial != null ? ", in " + e.installed_serial : ""}</td>
+      <td>${esc(e.input || "")}${e.lang ? " · " + esc(e.lang) : ""}</td><td class="num">${e.entry_seconds != null ? fmt(e.entry_seconds) : "–"}</td>
+      <td><code>${esc(e.hash)}</code></td></tr>`).join("") + "</tbody></table>"
+    : `<p class="muted">No snags signed yet. Speak or type one above.</p>`;
+}
+
+function micSetup() {
+  const mic = $("#mic"), status = $("#mic-status");
+  if (!SR) {
+    mic.disabled = true;
+    status.textContent = "Voice input needs Chrome or Edge. Typing works everywhere.";
+    return;
+  }
+  status.textContent = "Tap the microphone and speak.";
+  mic.addEventListener("click", () => {
+    if (recog) { recog.stop(); return; }
+    recog = new SR();
+    recog.lang = $("#asr-lang").value;
+    recog.interimResults = true;
+    recog.continuous = false;
+    recog.maxAlternatives = 1;
+    snStart("voice");
+    let finalText = "";
+    recog.onstart = () => { mic.setAttribute("aria-pressed", "true"); mic.setAttribute("aria-label", "Stop voice input"); status.textContent = "Listening…"; };
+    recog.onresult = (ev) => {
+      let interim = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript + " ";
+        else interim += ev.results[i][0].transcript;
+      }
+      $("#snag-text").value = (finalText + interim).trim();
+    };
+    recog.onerror = (ev) => {
+      status.textContent = ({ "not-allowed": "Microphone permission was refused.", "no-speech": "Heard nothing. Try again closer to the mic.",
+        network: "Speech service unreachable (offline?). Type the snag instead.", "audio-capture": "No microphone found." })[ev.error] || "Voice error: " + ev.error;
+    };
+    recog.onend = () => {
+      mic.setAttribute("aria-pressed", "false"); mic.setAttribute("aria-label", "Start voice input");
+      recog = null;
+      if (finalText.trim()) { status.textContent = "Got it."; SN.input = "voice"; snParse(); }
+      else if (status.textContent === "Listening…") status.textContent = "Tap the microphone and speak.";
+    };
+    recog.start();
+  });
+}
+
+function speakReadback() {
+  if (!SN.res || !window.speechSynthesis) { toast("Read-back audio is not available in this browser"); return; }
+  const u = new SpeechSynthesisUtterance(SN.res.readback.en);
+  u.lang = "en-IN"; u.rate = 0.95;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+
+async function renderSaarthi() {
+  if (!SN.opts) {
+    try { SN.opts = await api("/api/saarthi/options"); }
+    catch (e) { $("#snag-entries").innerHTML = `<p>Could not start SAARTHI: ${esc(e.message)}</p>`; return; }
+    $("#examples").innerHTML = EXAMPLES.map(([k, t], i) => `<button type="button" data-ex="${i}" title="${esc(t)}">${esc(k)}</button>`).join("");
+    $("#examples").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+      snReset(); snStart("typed"); $("#snag-text").value = EXAMPLES[+b.dataset.ex][1]; snParse();
+    }));
+    $("#parse-btn").addEventListener("click", snParse);
+    $("#snag-text").addEventListener("keydown", (ev) => {
+      snStart();
+      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); snParse(); }
+    });
+    $("#confirm-btn").addEventListener("click", snConfirm);
+    $("#speak-btn").addEventListener("click", speakReadback);
+    $("#clear-btn").addEventListener("click", snReset);
+    micSetup();
+    await loadEntries();
+  } else renderEntries();
+}
+
 // ------------------------------------------------------------ shell
 function selectTab(name) {
   document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
@@ -402,7 +657,7 @@ function selectTab(name) {
 }
 function renderAll() {
   const active = document.querySelector(".tabs button[aria-selected='true']").dataset.tab;
-  ({ readiness: renderReadiness, opportunities: renderOpportunities, agencies: renderAgencies, signals: renderSignals,
+  ({ readiness: renderReadiness, saarthi: renderSaarthi, opportunities: renderOpportunities, agencies: renderAgencies, signals: renderSignals,
      indigenisation: renderIndigenisation, ledger: renderLedger })[active]();
 }
 
