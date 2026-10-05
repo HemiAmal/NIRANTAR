@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIRANTAR Readiness Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M9 23V9l14 14V9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <h1>NIRANTAR</h1>
+      <p class="sub">National Intelligent Readiness &amp; Airworthiness Network for Total Asset Reliability</p>
+    </div>
+  </div>
+  <div class="top-right">
+    <span class="banner" role="note">Synthetic demo data (BHARAT-FLEET). Not IAF data.</span>
+    <button id="theme" class="ghost" type="button" aria-label="Toggle light or dark theme">Theme</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Console sections">
+  <button role="tab" aria-selected="true" data-tab="readiness">Readiness room</button>
+  <button role="tab" aria-selected="false" data-tab="saarthi">SAARTHI snag entry</button>
+  <button role="tab" aria-selected="false" data-tab="opportunities">Opportunities</button>
+  <button role="tab" aria-selected="false" data-tab="agencies">Repair agencies</button>
+  <button role="tab" aria-selected="false" data-tab="signals">Fleet signals</button>
+  <button role="tab" aria-selected="false" data-tab="indigenisation">Indigenisation</button>
+  <button role="tab" aria-selected="false" data-tab="ledger">Data &amp; ledger</button>
+</nav>
+
+<main>
+  <!-- READINESS ROOM -->
+  <section id="tab-readiness" class="tab-panel" role="tabpanel">
+    <div class="row-between">
+      <h2>Readiness room</h2>
+      <div class="seg" role="radiogroup" aria-label="Scenario">
+        <button role="radio" aria-checked="true" data-scen="normal">Normal operations</button>
+        <button role="radio" aria-checked="false" data-scen="supply_shock">Supply shock</button>
+      </div>
+    </div>
+    <p class="lede" id="scen-lede"></p>
+    <div class="tiles" id="tiles"></div>
+    <div class="card">
+      <div class="card-head">
+        <h3>Force availability forecast, next 12 months</h3>
+        <p class="hint">Shaded band: 10th to 90th percentile across simulated futures. Line: median.</p>
+      </div>
+      <div class="legend" id="fan-legend"></div>
+      <div class="chart" id="fan"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h3>What each policy is worth vs the status quo</h3>
+        <p class="hint">Change in role-weighted aircraft-available-days over 12 months, paired simulations, 95% CI.</p>
+      </div>
+      <div class="chart" id="policy-bars"></div>
+      <details><summary>Table view</summary><div id="policy-table"></div></details>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h3>Live what-if (runs the digital twin now)</h3>
+        <p class="hint">Inject a supplier disruption and compare policies. Results are simulated, not observed.</p>
+      </div>
+      <form id="sim-form" class="sim-form">
+        <label>Policy
+          <select name="policy">
+            <option value="P3">P3 NIRANTAR</option>
+            <option value="P2">P2 Predict + spares + schedule</option>
+            <option value="P0">P0 Reactive (status quo)</option>
+          </select>
+        </label>
+        <label>Supplier
+          <select name="country"><option value="RU">Russia</option><option value="FR">France</option></select>
+        </label>
+        <label>Disruption starts (day) <input name="shock_start" type="number" min="0" max="365" value="30"></label>
+        <label>Disruption lasts (days) <input name="shock_days" type="number" min="0" max="365" value="120"></label>
+        <label>Futures <input name="seeds" type="number" min="2" max="16" value="8"></label>
+        <button type="submit" class="primary">Run simulation</button>
+        <span id="sim-status" class="muted" role="status"></span>
+      </form>
+      <div class="legend" id="sim-legend"></div>
+      <div class="chart" id="sim-fan"></div>
+      <div id="sim-summary" class="sim-summary"></div>
+    </div>
+  </section>
+
+  <!-- SAARTHI -->
+  <section id="tab-saarthi" class="tab-panel" role="tabpanel" hidden>
+    <h2>SAARTHI: speak a snag</h2>
+    <p class="lede">Say or type the snag in Hindi, Hinglish or English. SAARTHI fills a structured entry using only values
+      from the fleet register, checks it against the records, reads it back, and signs it into the ledger when you confirm.
+      If it is unsure, it asks instead of guessing.</p>
+    <div class="card">
+      <div class="capture">
+        <button id="mic" class="mic" type="button" aria-pressed="false" aria-label="Start voice input">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+        </button>
+        <div class="capture-main">
+          <div class="capture-row">
+            <label class="inline">Speech language
+              <select id="asr-lang">
+                <option value="hi-IN">हिन्दी / Hinglish (hi-IN)</option>
+                <option value="en-IN">English (en-IN)</option>
+              </select>
+            </label>
+            <span id="mic-status" class="muted" role="status"></span>
+          </div>
+          <textarea id="snag-text" rows="2" placeholder="e.g. FI B1 07, doosra hydraulic pump leak, badal diya"
+            aria-label="Snag transcript"></textarea>
+          <div class="capture-row">
+            <button id="parse-btn" class="primary" type="button">Structure it</button>
+            <span class="muted">Try:</span>
+            <div class="chips" id="examples"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="snag-grid" id="snag-card" hidden>
+      <div class="card">
+        <div class="row-between"><h3>Structured entry</h3><span id="snag-timer" class="muted"></span></div>
+        <div id="snag-fields" class="snag-fields"></div>
+        <div id="snag-findings"></div>
+        <div class="readback" id="readback"></div>
+        <div class="btns">
+          <button class="primary" id="confirm-btn" type="button">Confirm &amp; sign</button>
+          <button class="ghost" id="speak-btn" type="button">Read back aloud</button>
+          <button class="ghost" id="clear-btn" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Checked against the records</h3>
+        <ul class="checks" id="snag-checks"></ul>
+      </div>
+    </div>
+    <div class="tiles" id="snag-tiles"></div>
+    <div class="card">
+      <h3>Signed snag entries</h3>
+      <div id="snag-entries"></div>
+    </div>
+    <p class="hint">Voice uses the browser's speech recogniser (Chrome or Edge; it may send audio to the browser vendor).
+      Structuring, checks and signing run locally. A field build would use an offline recogniser such as IndicConformer.</p>
+  </section>
+
+  <!-- OPPORTUNITIES -->
+  <section id="tab-opportunities" class="tab-panel" role="tabpanel" hidden>
+    <h2>Priced opportunities</h2>
+    <p class="lede">Each action is priced by paired simulation in weighted aircraft-available-days (wAAD) over 12 months.
+      Decisions are signed into the evidence ledger. NIRANTAR never grounds or releases an aircraft.</p>
+    <div class="card"><div id="opp-table"></div></div>
+    <div class="card" id="cod-card"></div>
+  </section>
+
+  <!-- AGENCIES -->
+  <section id="tab-agencies" class="tab-panel" role="tabpanel" hidden>
+    <h2>Repair agencies: quality, not just speed</h2>
+    <p class="lede">Repair effectiveness <i>q</i> is estimated from maintenance records alone
+      (0 = repaired as good as new, 1 = no better than before repair).</p>
+    <div class="card">
+      <div class="legend" id="ag-legend"></div>
+      <div class="chart" id="ag-dots"></div>
+    </div>
+    <div class="tiles" id="rogue-tiles"></div>
+    <div class="card"><div id="ag-table"></div></div>
+  </section>
+
+  <!-- SIGNALS -->
+  <section id="tab-signals" class="tab-panel" role="tabpanel" hidden>
+    <h2>Fleet signals (airworthiness pharmacovigilance)</h2>
+    <p class="lede">Failure modes reported disproportionately often in one environment, confirmed against flight-hour exposure.</p>
+    <div class="tiles" id="sig-tiles"></div>
+    <div class="card">
+      <label class="check"><input type="checkbox" id="sig-all"> Show all combinations</label>
+      <div id="sig-table"></div>
+    </div>
+  </section>
+
+  <!-- INDIGENISATION -->
+  <section id="tab-indigenisation" class="tab-panel" role="tabpanel" hidden>
+    <h2>Indigenisation priorities</h2>
+    <p class="lede">Foreign-sourced parts ranked by readiness gained per crore when an Indian source is qualified,
+      averaged over normal operations and a supply shock.</p>
+    <div class="card">
+      <div class="card-head"><h3>Weighted aircraft-days gained per ₹1 crore</h3></div>
+      <div class="chart" id="ind-bars"></div>
+    </div>
+    <div class="card"><div id="ind-table"></div></div>
+  </section>
+
+  <!-- LEDGER -->
+  <section id="tab-ledger" class="tab-panel" role="tabpanel" hidden>
+    <h2>Data quality &amp; evidence ledger</h2>
+    <div class="tiles" id="dq-tiles"></div>
+    <div class="card">
+      <div class="row-between">
+        <h3>CHITRAGUPTA ledger</h3>
+        <div class="btns">
+          <button class="primary" id="verify-btn" type="button">Verify ledger</button>
+          <button class="ghost" id="tamper-btn" type="button">Tamper demo</button>
+        </div>
+      </div>
+      <div id="verify-result" role="status"></div>
+      <div id="ledger-table"></div>
+    </div>
+  </section>
+</main>
+
+<div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

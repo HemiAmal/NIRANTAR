@@ -1,6 +1,6 @@
 # NIRANTAR — Milestone 1: The Engine Core
 
-> **Status:** built, tested (45 tests passing), and run end-to-end on synthetic data.
+> **Status:** built, tested (52 tests passing), run end-to-end on synthetic data, with a web console.
 > **Scope:** the computational heart of NIRANTAR as designed in `03_NIRANTAR_PROPOSED_SOLUTION.md`, without UI, connectors or speech (those are later milestones).
 > **Data:** 100% synthetic (BHARAT-FLEET) with known ground truth. **No number here is an IAF result.** The numbers show the methods work and reveal honest trade-offs.
 
@@ -26,11 +26,27 @@
 ## 2. How to run
 
 ```bash
-pip install -e ".[dev]"        # numpy, scipy, pandas, cryptography, pytest
-python -m pytest -q            # 45 tests, ~10 s
-python -m nirantar demo --quick   # ~15 s, fewer seeds
-python -m nirantar demo           # full run, ~60 s -> experiments/results/
+python -m pip install -e ".[dev]"  # numpy, scipy, pandas, cryptography, pytest
+python -m pytest -q                # all tests, ~20 s
+python -m nirantar demo --quick    # ~15 s, fewer seeds
+python -m nirantar demo            # full run, ~60 s -> experiments/results/
+python -m nirantar serve           # web console on http://127.0.0.1:8050
 ```
+
+### 2.1 The web console (Milestone 4a, built early for demos)
+
+`python -m nirantar serve` opens a local, offline console (Python standard library + vanilla JS + hand-drawn SVG; no CDN, no cloud; light and dark modes; works on phones):
+
+| Tab | What it shows |
+|---|---|
+| **Readiness room** | Headline availability (NIRANTAR vs status quo), aircraft-days recovered, worst-10% availability; 12-month forecast fan chart; value of every policy vs status quo with 95% CIs; **live what-if** that re-runs the digital twin with a supplier disruption you choose (≈0.5 s per 6 futures) |
+| **Opportunities** | Priced actions with value, 95% CI, value certainty, data evidence grade, who decides and a counterfactual explanation; **Accept / Defer / Reject** buttons sign the decision into the ledger; cost of delay |
+| **Repair agencies** | Repair-effectiveness *q* per agency with 90% intervals against the hidden synthetic truth; turnaround; rogue-unit detection precision/recall |
+| **Fleet signals** | DRISHTI confirmed signals and review candidates, with IC, PRR and exposure rate ratios |
+| **Indigenisation** | Parts ranked by readiness gained per crore under normal operations and a supply shock |
+| **Data & ledger** | SATYA data-quality summary; full signed ledger; **Verify** (signatures, hash chain, Merkle tree head) and **Tamper demo** (edits a copy, shows detection, real ledger untouched) |
+
+The API (`/api/report`, `/api/ledger`, `/api/decision`, `/api/simulate`, `/api/ledger/tamper-demo`) validates inputs, blocks path traversal and binds to localhost by default.
 
 ---
 
@@ -44,30 +60,32 @@ Policies (Doc 3 §13.2): **P0** reactive status quo · **P1** prediction-only (s
 
 | Scenario | Policy | Availability | Δ wAAD vs P0 [95% CI] | Fighter-sqn-equiv. | CRaR10 |
 |---|---|---|---|---|---|
-| normal | P0 Reactive | 69.4% | 0 | 0 | 66.6% |
-| normal | P1 Prediction-only | 65.7% | **−867** [−957, −778] | −0.13 | 62.8% |
-| normal | P2 Predict+Spares+Schedule | 71.4% | +311 [230, 393] | +0.05 | 67.7% |
-| normal | P2 + smart routing | 71.1% | +345 [109, 580] | +0.05 | 67.9% |
-| normal | P2 + rogue quarantine | 70.9% | +194 [103, 285] | +0.03 | 67.5% |
-| normal | P2 + MRV portfolio | 70.9% | +251 [138, 364] | +0.04 | 68.3% |
-| normal | **P3 NIRANTAR** | 70.7% | +280 [79, 482] | +0.04 | 67.9% |
-| supply shock | P0 Reactive | 64.8% | 0 | 0 | 61.2% |
-| supply shock | P1 Prediction-only | 61.7% | **−700** [−770, −630] | −0.11 | 58.6% |
-| supply shock | P2 Predict+Spares+Schedule | 67.1% | +410 [301, 519] | +0.06 | 62.7% |
-| supply shock | P2 + smart routing | 70.8% | +1,458 [1,229, 1,687] | +0.22 | 68.0% |
-| supply shock | P2 + rogue quarantine | 66.8% | +335 [233, 436] | +0.05 | 62.4% |
-| supply shock | P2 + MRV portfolio | 67.7% | +605 [486, 723] | +0.09 | 63.1% |
-| supply shock | **P3 NIRANTAR** | **70.9%** | **+1,462 [1,252, 1,671]** | **+0.22** | **67.0%** |
+| normal | P0 Reactive | 65.9% | 0 | 0 | 62.4% |
+| normal | P1 Prediction-only | 62.9% | **−675** [−757, −593] | −0.10 | 59.9% |
+| normal | P2 Predict+Spares+Schedule | 68.2% | +408 [298, 517] | +0.06 | 64.9% |
+| normal | P2 + smart routing | 70.0% | +949 [704, 1,194] | +0.14 | 66.4% |
+| normal | P2 + rogue quarantine | 67.6% | +274 [179, 369] | +0.04 | 64.6% |
+| normal | P2 + MRV portfolio | 67.5% | +289 [185, 393] | +0.04 | 64.6% |
+| normal | **P3 NIRANTAR** | **70.1%** | **+968 [757, 1,180]** | **+0.15** | **66.5%** |
+| supply shock | P0 Reactive | 62.0% | 0 | 0 | 58.3% |
+| supply shock | P1 Prediction-only | 59.5% | **−565** [−662, −468] | −0.09 | 56.4% |
+| supply shock | P2 Predict+Spares+Schedule | 64.3% | +394 [290, 498] | +0.06 | 60.2% |
+| supply shock | P2 + smart routing | 70.6% | +2,039 [1,827, 2,250] | +0.31 | 67.7% |
+| supply shock | P2 + rogue quarantine | 63.6% | +232 [140, 324] | +0.04 | 59.3% |
+| supply shock | P2 + MRV portfolio | 63.9% | +334 [250, 418] | +0.05 | 59.1% |
+| supply shock | **P3 NIRANTAR** | **70.5%** | **+1,996 [1,797, 2,196]** | **+0.30** | **66.9%** |
+
+The 5-year history ends with Russian supply in the *stressed* regime and 33 aircraft waiting for parts; forecasts start from that real state (see §4), which is why every curve in the console climbs out of a dip in the first month.
 
 ### 3.2 What the experiment says (honestly)
 
-1. **Prediction alone makes things worse.** P1 loses ~700–870 weighted aircraft-days. Alert-driven swaps pull serviceable-but-aged parts off aircraft, consume shelf spares and load repair agencies. This is the central claim of Doc 1 §3.2 (aircraft wait more than they break), now reproduced mechanistically.
-2. **The gains come from logistics and the repair network.** P2's logistics features (transfers, need-based return, AOG priority) turn prediction from harmful to useful.
-3. **NIRANTAR's value concentrates in stress.** Under a Russian-supply disruption, P3 recovers **+1,462 weighted aircraft-days (≈0.22 fighter-squadron-equivalents a year for a 70-aircraft force)** and holds tail-risk availability (CRaR10) at 67% vs 61% for the status quo. In normal conditions P3 is statistically tied with P2. Its job is resilience: Readiness-at-Risk is where it pays.
-4. **Most of the stress gain comes from one lever:** capacity- and quality-aware routing (SUSHRUTA's q estimates + queue awareness), which avoids routing into shipping lanes stretched by sanctions.
-5. **Rogue quarantine costs readiness in year one.** Deep-stripping rogue units takes them out of the pipeline longer; the reliability payoff arrives later. It needs a multi-year horizon to evaluate fairly (Milestone 2).
-6. **The analytic portfolio is not yet a big win.** CHANAKYA's analytic screen beats the status-quo "buy what was consumed" rule under shock (+605 vs +410) but not in normal times, and adds little once smart routing is on. Simulation-in-the-loop optimisation (OCBA ranking-and-selection) is the Milestone 2 fix.
-7. **Single-spare MRVs are honest but wide.** The CIs on one-unit purchases often include zero even with 16 paired seeds, and the evidence gating correctly marks them *defer*. Portfolio-level decisions are much better determined than single-unit ones.
+1. **Prediction alone makes things worse.** P1 loses 565–675 weighted aircraft-days. Alert-driven swaps pull serviceable-but-aged parts off aircraft, consume shelf spares and load repair agencies. This reproduces the central claim of Doc 1 §3.2 mechanistically: aircraft wait more than they break.
+2. **The gains come from the repair network and logistics.** P2's logistics features turn prediction from harmful to useful (+394 to +408).
+3. **NIRANTAR roughly doubles to quintuples P2's gain.** +968 in normal operations and **+1,996 under a supply shock (≈0.30 fighter-squadron-equivalents a year for a 70-aircraft force)**. Tail-risk availability (CRaR10) under shock is 66.9% vs 58.3% for the status quo.
+4. **One lever does most of the work:** capacity- and quality-aware routing, built on SUSHRUTA's repair-quality estimates plus queue awareness, which avoids routing into sanction-stretched shipping lanes and overloaded depots.
+5. **Rogue quarantine and the analytic spares portfolio add little on their own in year one** (+232 to +334). Deep-stripping rogues takes units out of circulation longer, with the payoff arriving later (needs a multi-year horizon), and the analytic portfolio screen is no better than "buy what was consumed". Both are Milestone 2 items.
+6. **Single-spare MRVs are honest about uncertainty.** Several one-unit purchases have 95% intervals that include zero; the console labels them "Uncertain, needs more evidence" and the recorded decision is *defer*. A Russian-sourced unit that cannot arrive within 12 months while supply is stressed is shown as "No effect within horizon".
+7. **Cost of delay:** the top-ranked spare loses ~1.2 weighted aircraft-days of value for every day its order waits.
 
 ### 3.3 Recovering hidden truth from records alone
 
@@ -96,6 +114,9 @@ Policies (Doc 3 §13.2): **P0** reactive status quo · **P1** prediction-only (s
 - **Gamma frailty in Tier C.** Without it, rogue units biased agency q upward. With it, estimates move towards truth.
 - **Exposure-normalised signals.** Composition-only disproportionality produced "mirror" false alarms. Requiring a rate-ratio excess removed them.
 - **Analytic gradients.** The Tier C posterior gradient is checked against finite differences in the test suite.
+- **Forecasts continue the supply regime history ended in.** An earlier version restarted every forecast in the "normal" regime, which made recovery from the end-of-history dip look faster than it should.
+- **Signed entries are immutable.** The ledger stores its own deep copy of each payload, so code that later edits the dict it logged cannot silently change a signed entry (a test caught exactly this).
+- **Strict JSON.** Reports replace NaN/inf with null so browsers can parse them.
 
 ---
 
@@ -115,5 +136,5 @@ Policies (Doc 3 §13.2): **P0** reactive status quo · **P1** prediction-only (s
 |---|---|
 | **M2: Decisions** | Simulation-in-the-loop portfolio (OCBA), multi-year rogue evaluation, parameter-uncertainty-aware policies, ensemble data assimilation and forecast verification (CRPS/PIT), stress-test library, RANNITI surge mode |
 | **M3: Sensors** | DHANVANTARI Tier A on NASA N-CMAPSS (engines) and DSTG HUMS2023 (gearbox) with conformal intervals; plug-in interface for external models (e.g. an engine health index) |
-| **M4: People** | Readiness Room / Base Huddle / BRD Queue web consoles; SAARTHI offline Hindi/English voice capture |
+| **M4: People** | Console done early (see §2.1). Remaining: Base Huddle and BRD Queue role views, SAARTHI offline Hindi/English voice capture |
 | **M5: Integration** | e-MMS/IMMOLS-shaped connectors, ontology, entity resolution, FAA SDRS real-data validation of SUSHRUTA/DRISHTI, security hardening (KAVACH) |

@@ -37,3 +37,13 @@ def test_forged_signature_rejected():
     e = led.append("decision", {"v": 1}, s)
     e["signature"] = mallory.sign(b"something else")
     assert led.verify_all() == [0]
+
+
+def test_caller_cannot_mutate_signed_payload():
+    led = Ledger()
+    s = Signer.generate("tech")
+    payload = {"verdict": "accept"}
+    led.append("decision", payload, s)
+    payload["verdict"] = "reject"          # caller keeps editing its own dict
+    assert led.entries[0]["payload"]["verdict"] == "accept"
+    assert led.verify_all() == []

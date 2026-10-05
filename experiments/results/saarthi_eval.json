@@ -1,0 +1,38 @@
+{
+ "n": 900,
+ "complete_and_correct": 1.0,
+ "any_silent_error": 0.0,
+ "by_language": {
+  "en": 1.0,
+  "hinglish": 1.0,
+  "hi": 1.0
+ },
+ "fields": {
+  "tail": {
+   "right": 1.0,
+   "flagged": 0.0,
+   "silent_wrong": 0.0
+  },
+  "part": {
+   "right": 1.0,
+   "flagged": 0.0,
+   "silent_wrong": 0.0
+  },
+  "position": {
+   "right": 1.0,
+   "flagged": 0.0,
+   "silent_wrong": 0.0
+  },
+  "mode": {
+   "right": 1.0,
+   "flagged": 0.0,
+   "silent_wrong": 0.0
+  },
+  "action": {
+   "right": 1.0,
+   "flagged": 0.0,
+   "silent_wrong": 0.0
+  }
+ },
+ "examples_of_failures": []
+}
