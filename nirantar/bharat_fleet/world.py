@@ -100,6 +100,33 @@ class World:
     initial_tso_fh: dict[int, float]                   # serial -> time since overhaul
     initial_stock: dict[tuple[str, str], list[int]]    # (base, pn) -> serial ids
     rogue_serials: set[int] = field(default_factory=set)
+    serial_names: dict[int, str] = field(default_factory=dict)   # planning id -> serial as recorded (if from records)
+
+    def sn(self, sid: int) -> str:
+        """A unit's serial number as people know it."""
+        return self.serial_names.get(sid, str(sid))
+
+    def serial_from_plate(self, text) -> int | None:
+        """Planning id for a serial read off a data plate: the recorded serial, or its digits."""
+        if text is None or str(text).strip() == "":
+            return None
+        if not self.serial_names:
+            try:
+                return int(text)
+            except (TypeError, ValueError):
+                return None
+        if not hasattr(self, "_by_plate"):
+            self._by_plate = {}
+            for sid, name in self.serial_names.items():
+                self._by_plate[name.upper()] = sid
+                digits = "".join(c for c in name if c.isdigit())
+                if digits:
+                    self._by_plate.setdefault(str(int(digits)), sid)
+        t = str(text).strip().upper()
+        if t in self._by_plate:
+            return self._by_plate[t]
+        digits = "".join(c for c in t if c.isdigit())
+        return self._by_plate.get(str(int(digits))) if digits else None
 
     def eta_true(self, pn: str, env: str) -> float:
         p = self.pns[pn]

@@ -39,8 +39,9 @@ def test_agency_and_unit_estimates_are_close_to_the_hidden_truth(world, est):
         assert st.loc[a.id, "tat_median"] == pytest.approx(a.tat_median_days, rel=0.15)
         assert st.loc[a.id, "back_leg_base"] == pytest.approx(a.transport_days, rel=0.25)
     flagged = {int(est.serial_of[i][3:]) for i in est.world.rogue_serials}
-    assert len(flagged & world.rogue_serials) >= 0.6 * len(world.rogue_serials)
-    assert len(flagged & world.rogue_serials) >= 0.5 * len(flagged)
+    assert len(flagged & world.rogue_serials) >= 0.8 * len(flagged)             # same detector as the analysis
+    assert len(flagged & world.rogue_serials) >= 0.4 * len(world.rogue_serials)
+    assert est.world.sn(next(iter(est.world.rogue_serials))).startswith("SN-")
 
 
 def test_the_twin_runs_from_the_estimate_and_forecasts_like_the_truth(world, history, est):

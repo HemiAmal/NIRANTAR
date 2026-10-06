@@ -245,6 +245,8 @@ class Importer:
             m = json.loads(man.read_text(encoding="utf-8"))
             if self.store.meta("epoch") is None and m.get("epoch"):
                 self.store.set_meta("epoch", m["epoch"])
+            if m.get("generator"):
+                self.store.set_meta("generator", str(m["generator"]))
             if m.get("as_of") and (self.store.meta("as_of") or "") < m["as_of"]:
                 self.store.set_meta("as_of", m["as_of"])
         risk = folder / "masters/supply_risk.json"

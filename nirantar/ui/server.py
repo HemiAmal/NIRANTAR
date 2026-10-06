@@ -41,8 +41,16 @@ MAX_SEEDS = 16
 class Console:
     """Server-side state: report, ledger and a lazily built simulation context."""
 
-    def __init__(self, results_dir: str | Path, plan_kwargs: dict | None = None):
+    def __init__(self, results_dir: str | Path, plan_kwargs: dict | None = None, store: str | Path | None = None):
+        """``store``: a SETU record store. With it the desk, clock and SAARTHI plan from the records
+        (world and fleet state estimated, nothing taken from the simulator); without it they use the
+        synthetic fleet's hidden truth, as in the demo."""
         self.dir = Path(results_dir)
+        self.store_path = Path(store) if store else None
+        if self.store_path and not self.store_path.exists():
+            raise FileNotFoundError(f"{self.store_path} not found; run `python -m nirantar import` first")
+        # records mode keeps its own clock and plans, apart from the synthetic demo's
+        self.state_dir = self.dir / "records" if self.store_path else self.dir
         self.plan_kwargs = plan_kwargs or {}
         self.report_path = self.dir / "milestone1_report.json"
         if not self.report_path.exists():
@@ -59,6 +67,8 @@ class Console:
     # -- simulation context (built once, on first use) -----------------
     def sim_context(self) -> dict:
         with self._lock:
+            if self._sim is None and self.store_path:
+                self._sim = self._records_context()
             if self._sim is None:
                 cfg = self.report["config"]
                 world = make_world(seed=cfg["world_seed"])
@@ -78,8 +88,46 @@ class Console:
                     "dq": dq, "n_fail": dict(dm.n_failures_by_pn),
                     "smart": tuple(greedy_portfolio(vals, cfg["budget_lakh"], cfg["horizon_days"])),
                     "cons": tuple(consumption_portfolio(world, recent, cfg["budget_lakh"])),
+                    "signals": self.report["drishti"]["table"],
+                    "source": {"mode": "synthetic", "label": "BHARAT-FLEET synthetic fleet (hidden truth)"},
                 }
             return self._sim
+
+    def _records_context(self) -> dict:
+        from nirantar.setu.estimate import estimate
+        from nirantar.setu.schema import Store
+        cfg = self.report["config"]
+        st = Store(self.store_path)
+        e = estimate(st)
+        world, dm, start = e.world, e.model, e.start
+        vals = surrogate_provision_values(world, start, dm, cfg["horizon_days"])
+        sp = e.frames["spells"]
+        recent = sp[sp["install_day"] > e.now - 365]
+        return {
+            "world": world, "dm": dm, "start": start, "cfg": cfg, "frailty": e.frailty, "dq": e.dq,
+            "n_fail": dict(dm.n_failures_by_pn),
+            "smart": tuple(greedy_portfolio(vals, cfg["budget_lakh"], cfg["horizon_days"])),
+            "cons": tuple(consumption_portfolio(world, recent, cfg["budget_lakh"])),
+            "signals": e.signals.to_dict("records") if len(e.signals) else [],
+            "source": {"mode": "records", "label": f"Records as of {st.meta('as_of')}", "as_of": st.meta("as_of"),
+                       "store": self.store_path.name, "generator": st.meta("generator"),
+                       "counts": st.counts(), "notes": e.notes,
+                       "rogues": len(dm.rogue_flags)},
+        }
+
+    def source(self) -> dict:
+        """Where the desk's picture of the fleet comes from (cheap: does not build the context)."""
+        if self._sim is not None:
+            return self._sim["source"]
+        if not self.store_path:
+            return {"mode": "synthetic", "label": "BHARAT-FLEET synthetic fleet (hidden truth)"}
+        from nirantar.setu.schema import Store
+        st = Store(self.store_path)
+        try:
+            return {"mode": "records", "label": f"Records as of {st.meta('as_of')}", "as_of": st.meta("as_of"),
+                    "store": self.store_path.name, "generator": st.meta("generator"), "counts": st.counts()}
+        finally:
+            st.close()
 
     def simulate(self, body: dict) -> dict:
         ctx = self.sim_context()
@@ -111,7 +159,7 @@ class Console:
         with self._lock:
             if self._desk is None or self._desk.day != clk.day:
                 self._desk = SaarthiDesk(ctx["world"], clk.snapshot, ctx["frailty"], ctx["dm"].rogue_flags,
-                                         self.report["drishti"]["table"], self.ledger, self.signer, day=clk.day)
+                                         ctx["signals"], self.ledger, self.signer, day=clk.day)
             return self._desk
 
     # -- operations clock ------------------------------------------------
@@ -119,7 +167,7 @@ class Console:
         ctx = self.sim_context()
         with self._lock:
             if self._clock is None:
-                self._clock = OperationsClock(ctx["world"], P0, ctx["start"], self.dir / "live" / "clock.pkl")
+                self._clock = OperationsClock(ctx["world"], P0, ctx["start"], self.state_dir / "live" / "clock.pkl")
             return self._clock
 
     def clock_view(self) -> dict:
@@ -170,7 +218,7 @@ class Console:
             raise ValueError("a plan is being prepared; reset when it is ready")
         with self._lock:
             clk.reset()
-            for f in (self.dir / "live").glob("plan_*.json"):
+            for f in (self.state_dir / "live").glob("plan_*.json"):
                 f.unlink()
             self._clock = self._planner = self._desk = None
         return self.clock_view()
@@ -181,8 +229,8 @@ class Console:
         with self._lock:
             n_shocks = len(clk.state["shocks"])
             if self._planner is None or (self._planner.day, self._planner.n_shocks) != (clk.day, n_shocks):
-                path = self.dir / "plan.json" if (clk.day, n_shocks) == (0, 0) else \
-                    self.dir / "live" / f"plan_day{clk.day}_s{n_shocks}.json"
+                path = self.state_dir / "plan.json" if (clk.day, n_shocks) == (0, 0) else \
+                    self.state_dir / "live" / f"plan_day{clk.day}_s{n_shocks}.json"
                 self._planner = PlanDesk(ctx["world"], clk.snapshot, ctx["dm"], ctx["n_fail"], ctx["dq"],
                                          self.ledger, self.signer, path, day=clk.day,
                                          scenario=clk.scenario(days=self.plan_kwargs.get("horizon", 90)),
@@ -272,6 +320,8 @@ def make_handler(console: Console):
                 return self._json(console.planner().view())
             if path == "/api/clock":
                 return self._json(console.clock_view())
+            if path == "/api/source":
+                return self._json(console.source())
             if path == "/api/saarthi/options":
                 return self._json(console.desk().options())
             if path == "/api/saarthi/entries":
@@ -323,10 +373,12 @@ def make_handler(console: Console):
     return Handler
 
 
-def serve(results_dir: str = "experiments/results", host: str = "127.0.0.1", port: int = 8050) -> None:
-    console = Console(results_dir)
+def serve(results_dir: str = "experiments/results", host: str = "127.0.0.1", port: int = 8050,
+          store: str | None = None) -> None:
+    console = Console(results_dir, store=store)
     httpd = ThreadingHTTPServer((host, port), make_handler(console))
-    print(f"NIRANTAR console on http://{host}:{port}  (Ctrl+C to stop)")
+    print(f"NIRANTAR console on http://{host}:{port}  (Ctrl+C to stop)"
+          + (f"  planning from records in {store}" if store else ""))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
