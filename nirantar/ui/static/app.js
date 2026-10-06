@@ -1080,7 +1080,7 @@ const STEPS = [
     run: async () => { selectTab("readiness"); $('#scen-seg button[data-scen="supply_shock"]').click(); spot("#policy-bars"); } },
   { title: "Trust: tamper with the record", at: 345, tab: "ledger", spot: "#verify-result", label: "Verify, then tamper",
     notes: () => ["Every snag, recommendation, decision, execution and scenario is a signed, hash-chained ledger entry.",
-      "Ask a judge to pick an entry; the tamper demo edits a copy and verification catches it instantly. The real ledger stays intact.",
+      "Ask someone in the room to pick an entry; the tamper demo edits a copy and verification catches it instantly. The real ledger stays intact.",
       "Evidence grade decides who may approve. NIRANTAR never grounds or releases an aircraft."],
     run: async () => { selectTab("ledger"); await verifyLedger(); await sleep(1200); await tamperDemo(); spot("#verify-result"); } },
   { title: "Close", at: 390, tab: null, label: null,
