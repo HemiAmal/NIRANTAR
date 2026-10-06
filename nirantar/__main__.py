@@ -17,9 +17,11 @@ def main() -> None:
     sv.add_argument("--results", default="experiments/results")
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8050)
+    sv.add_argument("--db", default=None, help="plan from a SETU record store instead of the synthetic fleet")
     pl = sub.add_parser("plan", help="prepare today's decision-desk plan (signed into the ledger)")
     pl.add_argument("--results", default="experiments/results")
     pl.add_argument("--workers", type=int, default=None, help="processes for pricing (default: CPU count, max 8)")
+    pl.add_argument("--db", default=None, help="plan from a SETU record store instead of the synthetic fleet")
     ex = sub.add_parser("export-synthetic", help="write the synthetic fleet's records as e-MMS/IMMOLS-style files")
     ex.add_argument("--out", default="data/exports/bharat-fleet")
     ex.add_argument("--days", type=int, default=1825)
@@ -28,6 +30,7 @@ def main() -> None:
     im.add_argument("folder")
     im.add_argument("--db", default="data/nirantar.db")
     im.add_argument("--mapping", default=None, help="mapping file (default: nirantar/setu/mappings/default.json)")
+    im.add_argument("--results", default="experiments/results", help="whose ledger signs each accepted batch")
     ev = sub.add_parser("saarthi-eval", help="score the SAARTHI snag extractor on synthetic utterances")
     ev.add_argument("--n", type=int, default=900)
     ev.add_argument("--seed", type=int, default=0)
@@ -35,7 +38,7 @@ def main() -> None:
     args = ap.parse_args()
     if args.cmd == "plan":
         from nirantar.ui.server import Console
-        console = Console(args.results, plan_kwargs={"workers": args.workers})
+        console = Console(args.results, plan_kwargs={"workers": args.workers}, store=args.db)
         desk = console.planner()
         plan = desk.build(log=print)
         j = plan["joint"] or {}
@@ -55,10 +58,15 @@ def main() -> None:
               + (f" ({len(m['planted_defects'])} planted defects)" if m["planted_defects"] else ""))
         return
     if args.cmd == "import":
+        from pathlib import Path
+
+        from nirantar.chitragupta.ledger import Ledger, Signer
         from nirantar.setu.ingest import Importer
         from nirantar.setu.schema import Store
         st = Store(args.db)
-        rep = Importer(st, mapping=args.mapping).import_folder(args.folder)
+        res = Path(args.results)
+        led, signer = Ledger(res / "ledger.jsonl"), Signer.load_or_create(res / "keys" / "setu.key", "setu")
+        rep = Importer(st, mapping=args.mapping, ledger=led, signer=signer).import_folder(args.folder)
         for b in rep["batches"]:
             if b["skipped"]:
                 continue
@@ -81,7 +89,7 @@ def main() -> None:
         return
     if args.cmd == "serve":
         from nirantar.ui.server import serve
-        serve(args.results, args.host, args.port)
+        serve(args.results, args.host, args.port, store=args.db)
         return
     cfg = Config(out_dir=args.out, quick=args.quick)
     if args.seeds:

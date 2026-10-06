@@ -171,15 +171,15 @@ def test_confirm_signs_updates_state_and_replays(desk_factory):
     n_spares = len(spares)
     e = desk.confirm({"fields": {"tail": tail, "part": pn, "position": 1, "mode": mode, "action": "replaced"},
                       "transcript": "test", "input": "voice", "entry_seconds": 11.5})
-    assert e["removed_serial"] == old and e["installed_serial"] is not None
-    assert desk.installed[tail][(pn, 0)] == e["installed_serial"]
+    assert e["removed_serial"] == desk.w.sn(old) and e["installed_serial"] is not None
+    assert desk.w.sn(desk.installed[tail][(pn, 0)]) == e["installed_serial"]
     assert len(desk.stock[(base, pn)]) == n_spares - 1
     assert desk.ledger.entries[-1]["kind"] == "snag_entry" and desk.ledger.verify_all() == []
     # duplicate warning, then a fresh desk replays the ledger to the same state
     r = desk.check({"tail": tail, "part": pn, "position": 1, "mode": mode})
     assert any(c["id"] == "duplicate" for c in r["checks"])
     again = desk_factory()
-    assert again.installed[tail][(pn, 0)] == e["installed_serial"]
+    assert again.w.sn(again.installed[tail][(pn, 0)]) == e["installed_serial"]
     assert again.stats()["entries"] == 1 and again.stats()["voice"] == 1
 
 

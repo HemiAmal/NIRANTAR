@@ -798,7 +798,7 @@ async function snRecheck() {
 
 function snOnChange(key, value) {
   snStart();
-  SN.fields[key] = value === "" ? null : (key === "position" || key === "serial") ? Number(value) : value;
+  SN.fields[key] = value === "" ? null : key === "position" ? Number(value) : value;
   SN.edited.add(key); SN.prov[key] = "edited"; SN.errors[key] = ""; delete SN.choices[key];
   const part = SN.opts.parts.find((p) => p.pn === SN.fields.part);
   const tail = SN.opts.tails.find((t) => t.id === SN.fields.tail);
@@ -855,7 +855,7 @@ function renderSnag() {
     fieldBox("position", "Position", sel("position", posOpts, part ? "Choose…" : "Pick a part first")),
     fieldBox("mode", "Finding", sel("mode", modeOpts)),
     fieldBox("action", "Action taken", sel("action", actOpts)),
-    fieldBox("serial", "Serial number (data plate)", `<input id="sf-serial" data-field="serial" type="number" min="0" inputmode="numeric"
+    fieldBox("serial", "Serial number (data plate)", `<input id="sf-serial" data-field="serial" type="text" autocomplete="off" spellcheck="false"
       value="${f.serial ?? ""}" placeholder="${onRecord != null ? "records: " + onRecord : "optional"}">`, false),
   ].join("");
   for (const k of ["tail", "part", "position", "mode", "action"]) { const s = $("#sf-" + k); if (s) s.value = f[k] ?? ""; }
@@ -1158,6 +1158,17 @@ function renderAll() {
      indigenisation: renderIndigenisation, ledger: renderLedger })[active]();
 }
 
+async function showSource() {
+  try {
+    const src = await api("/api/source");
+    if (src.mode !== "records") return;
+    const b = $(".topbar .banner");
+    const synthetic = /synthetic/i.test(src.generator || "");
+    b.textContent = `Planning from records as of ${(src.as_of || "").slice(0, 10)}${synthetic ? " · synthetic export, not IAF data" : ""}`;
+    b.title = [`Store: ${src.store}`, ...(src.notes || [])].join("\n");
+  } catch (e) { /* keep the default banner */ }
+}
+
 async function init() {
   try {
     [S.report, S.ledger] = await Promise.all([api("/api/report"), api("/api/ledger")]);
@@ -1177,6 +1188,7 @@ async function init() {
   });
   $("#sim-form").addEventListener("submit", runSim);
   guideSetup();
+  showSource();
   $("#verify-btn").addEventListener("click", verifyLedger);
   $("#tamper-btn").addEventListener("click", tamperDemo);
   let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderAll, 150); });

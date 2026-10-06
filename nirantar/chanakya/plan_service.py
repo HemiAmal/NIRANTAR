@@ -72,6 +72,7 @@ class PlanDesk:
             }, self.signer)
             it["ledger_seq"] = e["seq"]
             it["ledger_hash"] = e["entry_hash"][:16]
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(plan, default=_json_default), encoding="utf-8")
         self.plan = plan
         return plan

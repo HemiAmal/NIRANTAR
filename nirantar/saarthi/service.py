@@ -89,13 +89,20 @@ class SaarthiDesk:
         out["mode"] = mode if mode in L.MODE_LABELS else None
         act = fields.get("action") or "reported"
         out["action"] = act if act in L.ACTION_LABELS else "reported"
-        try:
-            out["serial"] = int(fields["serial"]) if fields.get("serial") not in (None, "") else None
-        except (TypeError, ValueError):
-            out["serial"] = None
+        out["serial"] = self.w.serial_from_plate(fields.get("serial"))
         return out
 
     def check(self, fields: dict, findings: list[str] | None = None) -> dict:
+        """Checks for the form; serial numbers go out as people know them."""
+        res = self._check(fields, findings)
+        res["fields"] = {**res["fields"], "serial": self._sn(res["fields"]["serial"])}
+        res["serial_on_record"] = self._sn(res["serial_on_record"])
+        return res
+
+    def _sn(self, sid: int | None) -> str | None:
+        return None if sid is None else self.w.sn(sid)
+
+    def _check(self, fields: dict, findings: list[str] | None = None) -> dict:
         f = self._clean_fields(fields)
         checks: list[dict] = []
 
@@ -127,7 +134,7 @@ class SaarthiDesk:
                 if pn == part.pn and sid == f["serial"]:
                     f["position"] = k + 1
                     inferred.append("position")
-                    add("position", "info", f"Position {k + 1} taken from S/N {sid}", "The records place it there")
+                    add("position", "info", f"Position {k + 1} taken from S/N {self.w.sn(sid)}", "The records place it there")
         if f["mode"] and part and f["mode"] not in self.w.failure_modes[part.family]:
             add("mode", "critical", f"'{L.MODE_LABELS[f['mode']]}' is not a recorded failure mode of a {part.family} part",
                 "Pick one of the listed modes")
@@ -140,19 +147,19 @@ class SaarthiDesk:
             spoken = f["serial"]
             if spoken is not None:
                 if spoken == on_record:
-                    add("serial", "good", f"S/N {spoken} matches the records")
+                    add("serial", "good", f"S/N {self.w.sn(spoken)} matches the records")
                 else:
                     where = self._where(spoken)
-                    rec = f"records show S/N {on_record} here" if on_record is not None else "records show this position empty"
+                    rec = f"records show S/N {self.w.sn(on_record)} here" if on_record is not None else "records show this position empty"
                     if where and where.startswith("fitted"):
-                        add("serial", "critical", f"S/N {spoken} is already {where}",
+                        add("serial", "critical", f"S/N {self.w.sn(spoken)} is already {where}",
                             f"One unit cannot be fitted twice; {rec}. Read the data plate again.")
                     else:
-                        add("serial", "warning", f"S/N {spoken} differs from the records",
-                            f"{rec}{'; S/N ' + str(spoken) + ' is ' + where if where else ''}. "
+                        add("serial", "warning", f"S/N {self.w.sn(spoken)} differs from the records",
+                            f"{rec}{'; S/N ' + self.w.sn(spoken) + ' is ' + where if where else ''}. "
                             "If the plate is right, the records need correcting (SATYA will raise it).")
             elif on_record is not None:
-                add("serial", "info", f"S/N {on_record} taken from the records",
+                add("serial", "info", f"S/N {self.w.sn(on_record)} taken from the records",
                     "Scan or read the data plate to confirm")
             else:
                 add("serial", "warning", "Records show this position empty (awaiting a spare)")
@@ -161,12 +168,12 @@ class SaarthiDesk:
             if unit is not None:
                 if unit in self.rogues:
                     p, n = self.p_rogue.get(unit, (1.0, 0))
-                    add("rogue", "warning", f"S/N {unit} is on the rogue-unit watchlist",
+                    add("rogue", "warning", f"S/N {self.w.sn(unit)} is on the rogue-unit watchlist",
                         f"{n} failures on record, rogue probability {p:.2f}. Route it to the agency with the best "
                         "repair quality and keep it out of the AOG pool.")
                 elif self.p_rogue.get(unit, (0, 0))[0] >= 0.3:
                     p, n = self.p_rogue[unit]
-                    add("rogue", "info", f"S/N {unit} is failing more often than its peers",
+                    add("rogue", "info", f"S/N {self.w.sn(unit)} is failing more often than its peers",
                         f"{n} failures on record, rogue probability {p:.2f}")
 
         if tail and part and f["mode"]:
@@ -231,9 +238,11 @@ class SaarthiDesk:
     def _apply(self, p: dict) -> None:
         slot = (p["pn"], int(p["position"]) - 1)
         inst = self.installed.setdefault(p["tail"], {})
-        if p.get("removed_serial") is not None and inst.get(slot) == p["removed_serial"]:
+        # recorded serials are the durable identity; planning ids can change when records are re-imported
+        removed = self.w.serial_from_plate(p["removed_sn"]) if p.get("removed_sn") else p.get("removed_serial")
+        new = self.w.serial_from_plate(p["installed_sn"]) if p.get("installed_sn") else p.get("installed_serial")
+        if removed is not None and inst.get(slot) == removed:
             inst.pop(slot, None)
-        new = p.get("installed_serial")
         if new is not None:
             sids = self.stock.get((p["base"], p["pn"]), [])
             if new in sids:
@@ -245,12 +254,13 @@ class SaarthiDesk:
         p = e["payload"]
         return {"seq": e["seq"], "hash": e["entry_hash"][:16], "ts": e["ts"], "tail": p["tail"], "pn": p["pn"],
                 "part": p["part"], "position": p["position"], "mode": p["mode"], "action": p["action"],
-                "removed_serial": p.get("removed_serial"), "installed_serial": p.get("installed_serial"),
+                "removed_serial": p.get("removed_sn", p.get("removed_serial")),
+                "installed_serial": p.get("installed_sn", p.get("installed_serial")),
                 "lang": p.get("lang"), "input": p.get("input"), "entry_seconds": p.get("entry_seconds"),
                 "edited_fields": p.get("edited_fields", [])}
 
     def confirm(self, body: dict) -> dict:
-        res = self.check(body.get("fields", {}), body.get("findings"))
+        res = self._check(body.get("fields", {}), body.get("findings"))
         if not res["ready"]:
             raise ValueError("entry is not ready: " + "; ".join(c["title"] for c in res["checks"]
                                                                  if c["status"] == "critical"))
@@ -272,8 +282,9 @@ class SaarthiDesk:
         payload = {
             "tail": tail["id"], "fleet": tail["fleet"], "base": tail["base"], "env": self.w.base_env(tail["base"]),
             "pn": part.pn, "part": part.name, "position": f["position"], "mode": f["mode"], "action": f["action"],
-            "serial_reported": f["serial"], "serial_on_record": on_record,
+            "serial_reported": self._sn(f["serial"]), "serial_on_record": self._sn(on_record),
             "removed_serial": removed, "installed_serial": installed,
+            "removed_sn": self._sn(removed), "installed_sn": self._sn(installed),
             "findings": [str(x)[:120] for x in (body.get("findings") or [])][:8],
             "transcript": str(body.get("transcript", ""))[:500],
             "lang": str(body.get("lang", ""))[:12], "input": "voice" if body.get("input") == "voice" else "typed",

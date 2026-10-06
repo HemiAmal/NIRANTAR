@@ -37,7 +37,10 @@ import pandas as pd
 
 from nirantar.bharat_fleet.world import Agency, Base, FleetType, PartNumber, RegimeModel, Serial, World
 from nirantar.dhanvantari.tier_c import TierCModel, build_design, fit_tier_c
+from nirantar.drishti.signals import disproportionality, exposure_rates
+from nirantar.satya.quality import check_spells, dq_scores
 from nirantar.setu.schema import Store
+from nirantar.sushruta.agency import flag_rogues, serial_frailty
 
 
 @dataclass
@@ -50,6 +53,10 @@ class Estimated:
     now: float                         # store "as of", days since epoch
     notes: list[str]
     agency_stats: pd.DataFrame
+    frames: dict                       # the store's frames with serials as planning ids
+    frailty: pd.DataFrame              # per-unit rogue probability (SUSHRUTA)
+    signals: pd.DataFrame              # failure-mode signals per system and environment (DRISHTI)
+    dq: dict                           # data-quality score per part number (SATYA)
 
 
 # ---------------------------------------------------------------- helpers
@@ -147,9 +154,9 @@ def current_regimes(rep: pd.DataFrame, receipts: pd.DataFrame, stats: pd.DataFra
 # ---------------------------------------------------------------- main
 
 
-def estimate(store: Store, model: TierCModel | None = None, rogue_z: float = 1.25) -> Estimated:
-    """Planning world and today's fleet state from the store. Units whose posterior failure tendency
-    is at least ``rogue_z`` times their part number's are listed as suspected rogues."""
+def estimate(store: Store, model: TierCModel | None = None, rogue_p: float = 0.5) -> Estimated:
+    """Planning world and today's fleet state from the store. Units with a rogue probability of at
+    least ``rogue_p`` (and two or more failures) are listed as suspected rogues."""
     fr, ms = store.frames(), store.masters()
     now = store.now_day()
     notes = ["Inspections are not recorded yet: each aircraft's inspection timing is spread evenly over its interval.",
@@ -169,6 +176,14 @@ def estimate(store: Store, model: TierCModel | None = None, rogue_z: float = 1.2
 
     # unit frailty posterior (gamma-Poisson), from the same design the fit used
     z_post = _frailty_posterior(model, sp, family_of)
+    # the same records keyed by planning id, for everything downstream
+    ids = {k: _with_ids(v, id_of) for k, v in fr.items()}
+    frailty = serial_frailty(model, ids["spells"], family_of)
+    model.rogue_flags = flag_rogues(frailty, p_min=rogue_p)
+    signals = disproportionality(ids["snags"].dropna(subset=["mode"]),
+                                 exposure=exposure_rates(ids["spells"], family_of))
+    dq = dq_scores(ids["spells"], check_spells(ids["spells"], ids["repairs"], horizon_day=now))
+    dq = dq.set_index("pn")["dq"].to_dict() if len(dq) else {}
 
     # masters
     bases_df, fleets_df, air = ms["bases"], ms["fleets"], ms["aircraft"]
@@ -213,11 +228,20 @@ def estimate(store: Store, model: TierCModel | None = None, rogue_z: float = 1.2
         tails=[{"id": t.tail, "fleet": t.fleet, "base": t.base} for t in air.itertuples()],
         serials=[Serial(i, pn_of_serial[s], float(z_post.get(s, 1.0)), "") for i, s in enumerate(serials)],
         initial_install={}, initial_tso_fh={}, initial_stock={},
-        rogue_serials={id_of[s] for s, z in z_post.items() if z >= rogue_z})
+        rogue_serials=set(model.rogue_flags), serial_names={i: s for s, i in id_of.items()})
 
     start = _state(world, model, fr, id_of, stats, risk, now, notes)
     start["regimes"] = current_regimes(rep, fr["receipts"], stats, risk, now)
-    return Estimated(world, start, model, {i: s for s, i in id_of.items()}, id_of, now, notes, stats)
+    return Estimated(world, start, model, {i: s for s, i in id_of.items()}, id_of, now, notes, stats,
+                     ids, frailty, signals, dq)
+
+
+def _with_ids(df: pd.DataFrame, id_of: dict) -> pd.DataFrame:
+    if "serial" not in df:
+        return df
+    df = df.copy()
+    df["serial"] = df["serial"].map(id_of).astype("Int64")
+    return df
 
 
 def _frailty_posterior(model: TierCModel, spells: pd.DataFrame, family_of: dict) -> dict[str, float]:

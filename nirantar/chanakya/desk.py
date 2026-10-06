@@ -255,7 +255,7 @@ def candidates(world: World, start: dict, dm: DecisionModel, brd: dict, horizon:
             add(Candidate(
                 Action("expedite", pn, base=base, serial=it["sid"], agency=it["agency"],
                        cost_lakh=expedite_cost(world, pn)),
-                f"Expedite S/N {it['sid']} ({name}) for {base}",
+                f"Expedite S/N {world.sn(it['sid'])} ({name}) for {base}",
                 f"Unit is {it['where']}; with overtime and air freight it reaches {base} in {fast_txt}"
                 f"{' (customs and payment delays still apply)' if express(it) > EXPEDITE_LEG_DAYS else ''}. "
                 f"{len(hs)} aircraft waiting there.",
@@ -263,7 +263,7 @@ def candidates(world: World, start: dict, dm: DecisionModel, brd: dict, horizon:
             if it["type"] == "job" and it["dt"] <= 0:
                 add(Candidate(
                     Action("priority", pn, base=base, serial=it["sid"], agency=it["agency"]),
-                    f"Repair S/N {it['sid']} ({name}) first at {it['agency']}",
+                    f"Repair S/N {world.sn(it['sid'])} ({name}) first at {it['agency']}",
                     f"It sits in {it['agency']}'s queue while {len(hs)} aircraft at {base} wait for this part.",
                     uses=(("serial", it["sid"]),), fixes=(("hole", base, pn),)))
 
