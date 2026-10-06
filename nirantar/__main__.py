@@ -30,6 +30,20 @@ def main() -> None:
     us.add_argument("--db", default="experiments/results/users.db")
     us.add_argument("--roles", default=None, help="comma-separated, e.g. 'CEngO,Logistics officer'")
     us.add_argument("--display", default=None, help="name shown in the console and ledger")
+    bk = sub.add_parser("backup", help="consistent, signed backup of the node (databases, ledger, plans)")
+    bk.add_argument("--results", default="experiments/results")
+    bk.add_argument("--db", default=None, help="record store to include")
+    bk.add_argument("--users", default=None, help="user accounts database to include")
+    bk.add_argument("--out", default="backups")
+    bk.add_argument("--with-keys", action="store_true", help="include private signing keys (store the backup securely)")
+    bv = sub.add_parser("backup-verify", help="check a backup's hashes, databases, ledger and signature")
+    bv.add_argument("folder")
+    rs = sub.add_parser("restore", help="restore a verified backup")
+    rs.add_argument("folder")
+    rs.add_argument("--results", default="experiments/results")
+    rs.add_argument("--db", default=None)
+    rs.add_argument("--users", default=None)
+    rs.add_argument("--force", action="store_true", help="replace existing files")
     mc = sub.add_parser("make-cert", help="create a self-signed TLS certificate for the console")
     mc.add_argument("--out", default="experiments/results/keys")
     mc.add_argument("--host", action="append", default=None, help="host name or IP the console is reached at")
@@ -109,6 +123,27 @@ def main() -> None:
         Path(args.out).mkdir(parents=True, exist_ok=True)
         (Path(args.out) / "records_backtest.json").write_text(json.dumps(clean_json(r), indent=1), encoding="utf-8")
         print(json.dumps(r["summary"], indent=1))
+        return
+    if args.cmd in ("backup", "backup-verify", "restore"):
+        import json
+        from pathlib import Path
+
+        from nirantar import backup as B
+        if args.cmd == "backup":
+            from nirantar.chitragupta.ledger import Signer
+            key = Path(args.results) / "keys" / "web-console.key"
+            signer = Signer.load_or_create(key, "web-console") if key.exists() else None
+            out = B.backup(args.results, args.out, {"store": args.db, "users": args.users}, args.with_keys, signer)
+            v = B.verify(out)
+            print(f"{out}: {v['files']} files, verified {'OK' if v['ok'] else v['problems']}"
+                  + ("  (contains private keys: keep it secure)" if args.with_keys else ""))
+        elif args.cmd == "backup-verify":
+            v = B.verify(args.folder)
+            print(json.dumps(v, indent=1))
+            raise SystemExit(0 if v["ok"] else 1)
+        else:
+            w = B.restore(args.folder, args.results, {"store": args.db, "users": args.users}, args.force)
+            print(f"restored {len(w)} files")
         return
     if args.cmd == "users":
         from nirantar.rakshak.cli import users_command

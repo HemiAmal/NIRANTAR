@@ -13,13 +13,11 @@ repair pipeline, supply regime).
 """
 from __future__ import annotations
 
-import os
-import pickle
-import tempfile
 from pathlib import Path
 
 import numpy as np
 
+from nirantar import persist
 from nirantar.bharat_fleet.world import World
 from nirantar.sanjaya.twin import Action, Policy, Scenario, Twin
 
@@ -37,8 +35,7 @@ class OperationsClock:
     def __init__(self, world: World, policy: Policy, start: dict, path: str | Path, seed0: int = 9000):
         self.w, self.policy, self.path, self.seed0 = world, policy, Path(path), seed0
         if self.path.exists():
-            with self.path.open("rb") as f:
-                self.state = pickle.load(f)
+            self.state = persist.loads(self.path.read_text(encoding="utf-8"))
         else:
             self.state = {"day": 0, "live": start, "shadow": start, "log": [], "events": [], "applied": []}
         self.state.setdefault("shocks", [])
@@ -55,11 +52,7 @@ class OperationsClock:
         return {a["recommendation_seq"] for a in self.state["applied"] if a.get("recommendation_seq") is not None}
 
     def _save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=self.path.parent, suffix=".tmp")
-        with os.fdopen(fd, "wb") as f:
-            pickle.dump(self.state, f)
-        os.replace(tmp, self.path)
+        persist.atomic_write_text(self.path, persist.dumps(self.state))   # JSON, never pickle
 
     # ------------------------------------------------------------ supply disruptions
 

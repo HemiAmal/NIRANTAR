@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TIME_FMT = "%Y-%m-%d %H:%M"
 
 DDL = """
@@ -70,6 +70,15 @@ CREATE INDEX IF NOT EXISTS ix_installs_tail ON installs(tail);
 CREATE INDEX IF NOT EXISTS ix_repairs_serial ON repair_orders(serial);
 """
 
+# schema changes after version 1, applied in order to older stores (never edit a released step)
+MIGRATIONS = {
+    2: """
+CREATE TABLE IF NOT EXISTS models (
+  version INTEGER PRIMARY KEY, fitted_at TEXT NOT NULL, as_of TEXT, data_sha256 TEXT NOT NULL,
+  spec TEXT NOT NULL, card TEXT NOT NULL, ledger_seq INTEGER);
+""",
+}
+
 MASTER_TABLES = ("bases", "fleets", "aircraft", "agencies", "parts")
 EVENT_TABLES = ("installs", "repair_orders", "defects", "receipts", "onhand")
 
@@ -84,11 +93,27 @@ class Store:
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.con = sqlite3.connect(self.path, check_same_thread=False)
+        self.con = sqlite3.connect(self.path, check_same_thread=False, timeout=10)
         self.con.execute("PRAGMA foreign_keys = ON")
+        self.con.execute("PRAGMA journal_mode = WAL")       # readers do not block the writer (console + imports)
+        self.con.execute("PRAGMA synchronous = NORMAL")
         self.con.executescript(DDL)
         if self.meta("schema_version") is None:
-            self.set_meta("schema_version", str(SCHEMA_VERSION))
+            self.set_meta("schema_version", "1")
+        self.migrate()
+
+    def migrate(self) -> list[int]:
+        """Bring an older store up to this code's schema; refuse one written by newer code."""
+        v = int(self.meta("schema_version"))
+        if v > SCHEMA_VERSION:
+            raise RuntimeError(f"{self.path} has schema {v}, newer than this NIRANTAR ({SCHEMA_VERSION}); upgrade first")
+        done = []
+        for n in range(v + 1, SCHEMA_VERSION + 1):
+            with self.tx() as con:
+                con.executescript(MIGRATIONS[n])
+            self.set_meta("schema_version", str(n))
+            done.append(n)
+        return done
 
     # -- meta ----------------------------------------------------------------
     def meta(self, key: str) -> str | None:

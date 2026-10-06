@@ -7,7 +7,7 @@ from nirantar.sanjaya.twin import Action, Twin
 
 @pytest.fixture()
 def clock(world, history, tmp_path):
-    return OperationsClock(world, P0, history.snapshot, tmp_path / "live" / "clock.pkl")
+    return OperationsClock(world, P0, history.snapshot, tmp_path / "live" / "clock.json")
 
 
 def test_no_decisions_means_no_gap(clock):
