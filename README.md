@@ -3,7 +3,7 @@
 **National Intelligent Readiness & Airworthiness Network for Total Asset Reliability**
 *(निरंतर: "continuous, uninterrupted")*
 
-A proposed sovereign decision platform for military aircraft predictive maintenance and fleet availability. It addresses Smart India Hackathon 2026 problem statement **SIH26249: "Air Power – Predictive Maintenance & Fleet Availability"** (Ministry of Defence / DSSC).
+A sovereign decision platform for military aircraft predictive maintenance and fleet availability, being developed as a real system for the problem the Ministry of Defence posed as **SIH26249: "Air Power – Predictive Maintenance & Fleet Availability"** (MoD / DSSC).
 
 ## Research documents
 
@@ -17,7 +17,7 @@ A proposed sovereign decision platform for military aircraft predictive maintena
 | 6 | [Milestone 3: Decision desk](docs/06_MILESTONE_3_DECISION_DESK.md) | Today's fleet board, a priced plan (cannibalisation, transfer, expedite, purchase), approvals by the right authority signed into the ledger, fresh-future check |
 | 7 | [Milestone 4: Operations clock](docs/07_MILESTONE_4_OPERATIONS_CLOCK.md) | Run the station day by day: approved actions applied and signed, a shadow fleet on identical events measures what the decisions bought |
 | 8 | [Milestone 5: Crisis mode](docs/08_MILESTONE_5_CRISIS_MODE.md) | Declare a supplier disruption on any day; both fleets feel it, the desk re-plans (re-routing to Indian depots, expediting), the clock measures the result |
-| 9 | [7-minute demo script](docs/09_DEMO_SCRIPT.md) | The judges' storyline as a presenter script; built into the console as **Guided demo** with live numbers and one-click steps |
+| 9 | [7-minute demo script](docs/09_DEMO_SCRIPT.md) | A stakeholder briefing storyline as a presenter script; built into the console as **Guided demo** with live numbers and one-click steps |
 
 ## Development
 

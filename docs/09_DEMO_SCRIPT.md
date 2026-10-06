@@ -42,7 +42,7 @@ Keys while the guide is open: **→** next, **←** back, **D** do it. **Minimis
 |---|---|
 | Microphone blocked or no network for speech | Use the example button (the guide's **Do it** already does). Structuring, checks and signing run offline. |
 | A re-plan is slow | Keep talking; the guide's button shows "Working…" and the desk shows progress. On a 4-core laptop it is about 15 s. |
-| A judge wants to try SAARTHI | Let them type any snag in Hinglish; ambiguous ones ("B1 05 pump leaking") show SAARTHI asking instead of guessing. |
+| Someone in the room wants to try SAARTHI | Let them type any snag in Hinglish; ambiguous ones ("B1 05 pump leaking") show SAARTHI asking instead of guessing. |
 | Running long | Skip SUSHRUTA (step 7); the routing card already makes its point. |
 | Want to start over | Guide → Back to *Preparation* → **Reset the station to day 0**. |
 
