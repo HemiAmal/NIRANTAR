@@ -18,6 +18,21 @@ def main() -> None:
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8050)
     sv.add_argument("--db", default=None, help="plan from a SETU record store instead of the synthetic fleet")
+    sv.add_argument("--auth", default=None, metavar="USERS_DB",
+                    help="require logins (user accounts from `nirantar users`), e.g. experiments/results/users.db")
+    sv.add_argument("--cert", default=None, help="TLS certificate (PEM) for HTTPS")
+    sv.add_argument("--key", default=None, help="TLS private key (PEM)")
+    sv.add_argument("--allow-insecure", action="store_true",
+                    help="allow listening beyond this machine without logins and HTTPS (isolated test networks only)")
+    us = sub.add_parser("users", help="manage console user accounts (roles, passphrases, disabling)")
+    us.add_argument("action", choices=["add", "list", "roles", "disable", "enable", "reset-password", "audit"])
+    us.add_argument("username", nargs="?")
+    us.add_argument("--db", default="experiments/results/users.db")
+    us.add_argument("--roles", default=None, help="comma-separated, e.g. 'CEngO,Logistics officer'")
+    us.add_argument("--display", default=None, help="name shown in the console and ledger")
+    mc = sub.add_parser("make-cert", help="create a self-signed TLS certificate for the console")
+    mc.add_argument("--out", default="experiments/results/keys")
+    mc.add_argument("--host", action="append", default=None, help="host name or IP the console is reached at")
     pl = sub.add_parser("plan", help="prepare today's decision-desk plan (signed into the ledger)")
     pl.add_argument("--results", default="experiments/results")
     pl.add_argument("--workers", type=int, default=None, help="processes for pricing (default: CPU count, max 8)")
@@ -95,6 +110,15 @@ def main() -> None:
         (Path(args.out) / "records_backtest.json").write_text(json.dumps(clean_json(r), indent=1), encoding="utf-8")
         print(json.dumps(r["summary"], indent=1))
         return
+    if args.cmd == "users":
+        from nirantar.rakshak.cli import users_command
+        users_command(args)
+        return
+    if args.cmd == "make-cert":
+        from nirantar.rakshak.tls import make_self_signed
+        cert, key = make_self_signed(args.out, args.host or ["localhost", "127.0.0.1"])
+        print(f"certificate {cert}\nprivate key {key}  (keep it on this machine; give users the certificate to trust)")
+        return
     if args.cmd == "refit":
         from pathlib import Path
 
@@ -133,7 +157,8 @@ def main() -> None:
         return
     if args.cmd == "serve":
         from nirantar.ui.server import serve
-        serve(args.results, args.host, args.port, store=args.db)
+        serve(args.results, args.host, args.port, store=args.db, auth_db=args.auth, cert=args.cert, key=args.key,
+              allow_insecure=args.allow_insecure)
         return
     cfg = Config(out_dir=args.out, quick=args.quick)
     if args.seeds:

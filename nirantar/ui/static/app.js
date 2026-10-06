@@ -48,11 +48,21 @@ function niceTicks(lo, hi, n = 5) {
   for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
   return out;
 }
+const ME = { mode: "demo", roles: [], permissions: [] };
+const can = (p) => ME.mode !== "secure" || ME.permissions.includes(p);
 async function api(path, body) {
-  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  const headers = { "X-Nirantar": "1" };
+  const opts = body ? { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) } : { headers };
+  const r = await fetch(path, opts);
   const j = await r.json();
+  if (r.status === 401 && path !== "/api/me" && path !== "/api/login") showLogin();
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
+}
+function showLogin(msg) {
+  $("#login").hidden = false;
+  $("#login-error").textContent = msg || "";
+  $("#login-user").focus();
 }
 function toast(msg) {
   const t = $("#toast");
@@ -337,7 +347,23 @@ function renderIndigenisation() {
       <td class="num">${fmt(r.waad_per_crore)}</td></tr>`).join("") + "</tbody></table>";
 }
 
+async function renderAccess() {
+  const card = $("#access-card");
+  card.hidden = !(ME.mode === "secure" && ME.permissions.includes("admin"));
+  if (card.hidden) return;
+  try {
+    const [u, a] = await Promise.all([api("/api/admin/users"), api("/api/admin/audit")]);
+    $("#access-users").innerHTML = `<table><thead><tr><th>User</th><th>Roles</th><th>Signs as</th><th>Status</th></tr></thead><tbody>` +
+      u.users.map((x) => `<tr><td>${esc(x.display)} <span class="muted">(${esc(x.username)})</span></td><td>${esc(x.roles.join(", "))}</td>
+        <td><code>${esc(x.actor)}</code></td><td>${x.disabled ? "Disabled" : x.locked ? "Locked" : "Active"}</td></tr>`).join("") + "</tbody></table>";
+    $("#access-audit").innerHTML = `<table><thead><tr><th>Time</th><th>User</th><th>Event</th><th>Detail</th><th>From</th></tr></thead><tbody>` +
+      a.audit.slice(0, 40).map((x) => `<tr><td>${new Date(x.ts * 1000).toLocaleString()}</td><td>${esc(x.username || "")}</td>
+        <td>${esc(x.event)}</td><td>${esc(x.detail || "")}</td><td>${esc(x.ip || "")}</td></tr>`).join("") + "</tbody></table>";
+  } catch (e) { $("#access-users").textContent = "Could not load accounts: " + e.message; }
+}
+
 function renderLedger() {
+  renderAccess();
   const L = S.ledger, sat = S.report.satya;
   const nIssues = Object.values(sat.issues || {}).reduce((a, b) => a + b, 0);
   $("#dq-tiles").innerHTML = [
@@ -417,7 +443,7 @@ async function loadPlan() {
     $("#replan-btn").disabled = true;
     clearTimeout(DK.poll); DK.poll = setTimeout(loadPlan, 1000);
   } else {
-    $("#replan-btn").disabled = false;
+    $("#replan-btn").disabled = !can("plan");
     if (st.status === "error") $("#plan-status").textContent = "Planning failed: " + st.error;
   }
   renderClock();
@@ -426,6 +452,7 @@ async function loadPlan() {
 }
 
 function canDecide(item, role) {
+  if (!role) return false;
   return item.authority.includes(role) || item.authority.includes(role.split(" ")[0]);
 }
 
@@ -580,8 +607,10 @@ async function renderDeskTab() {
     try {
       await loadPlan();
     } catch (e) { $("#plan-status").textContent = "Could not load the plan: " + e.message; return; }
-    roleSel.innerHTML = DK.view.roles.map((r) => `<option>${esc(r)}</option>`).join("");
-    roleSel.value = storeGet("nirantar-role", DK.view.roles[0]);
+    const roles = ME.mode === "secure" ? DK.view.roles.filter((r) => ME.roles.includes(r)) : DK.view.roles;
+    roleSel.innerHTML = roles.length ? roles.map((r) => `<option>${esc(r)}</option>`).join("") : `<option value="">View only</option>`;
+    roleSel.disabled = roles.length < 2;
+    roleSel.value = roles.includes(storeGet("nirantar-role", "")) ? storeGet("nirantar-role", "") : (roles[0] || "");
     roleSel.addEventListener("change", () => { storeSet("nirantar-role", roleSel.value); if (DK.view.plan) renderDesk(); });
     $("#replan-btn").addEventListener("click", async () => {
       try { await api("/api/plan/build", {}); DK.outcome = null; $("#outcome-fan").innerHTML = ""; $("#outcome-legend").innerHTML = ""; $("#outcome-summary").textContent = ""; loadPlan(); }
@@ -685,14 +714,14 @@ function renderClock() {
   const regimeTxt = Object.entries(c.regimes || {}).filter(([, st]) => st !== "normal").map(([k, st]) => `${SUPN[k] || k} supply ${st}`);
   $("#shock-status").innerHTML = active.map((sh) => badge("critical", `${SUPN[sh.country] || sh.country} supply disrupted to day ${sh.end}`)).join("") +
     (active.length ? "" : regimeTxt.map((t) => badge("warning", t)).join(""));
-  $("#shock-btn").disabled = DK.view?.state?.status === "building";
+  $("#shock-btn").disabled = DK.view?.state?.status === "building" || !can("clock");
   $("#clock-events").innerHTML = evs.length ? evs.map((e) => {
     const [lvl, word] = EVENT_KIND[e.kind] || ["neutral", e.kind];
     return `<li><span class="d">Day ${e.day}</span><span>${badge(lvl, word)}</span><span>${esc(e.text)}</span></li>`;
   }).join("") : `<li><span class="muted">No events yet.</span></li>`;
   $("#clock-log").querySelector("summary").textContent = c.events_total > c.events.length
     ? `Station log (latest ${evs.length} of ${c.events_total} events)` : `Station log (${evs.length} events)`;
-  for (const id of ["#adv1", "#adv7"]) $(id).disabled = DK.view?.state?.status === "building";
+  for (const id of ["#adv1", "#adv7"]) $(id).disabled = DK.view?.state?.status === "building" || !can("clock");
 }
 async function advanceClock(days) {
   for (const id of ["#adv1", "#adv7", "#clock-reset"]) $(id).disabled = true;
@@ -706,7 +735,7 @@ async function advanceClock(days) {
     renderClock();
     await loadPlan();
   } catch (e) { toast("Not advanced: " + e.message); }
-  finally { $("#clock-reset").disabled = false; renderClock(); }
+  finally { $("#clock-reset").disabled = !can("clock"); renderClock(); }
 }
 async function declareShock() {
   $("#shock-btn").disabled = true;
@@ -869,7 +898,7 @@ function renderSnag() {
   $("#snag-checks").innerHTML = r.checks.slice().sort((a, b) => order[a.status] - order[b.status]).map((c) =>
     `<li><span class="ic ${c.status}"></span><div><div class="ct">${esc(c.title)}<span class="cs">${STATUS_WORD[c.status]}</span></div>${c.detail ? `<div class="cd">${esc(c.detail)}</div>` : ""}</div></li>`).join("");
   const btn = $("#confirm-btn");
-  btn.disabled = !r.ready;
+  btn.disabled = !r.ready || !can("snag");
   btn.title = r.ready ? "" : "Resolve the blocking items first";
 }
 
@@ -1169,7 +1198,41 @@ async function showSource() {
   } catch (e) { /* keep the default banner */ }
 }
 
+async function whoAmI() {
+  try {
+    Object.assign(ME, await api("/api/me"));
+  } catch (e) {
+    return false;                                   // 401: not signed in
+  }
+  if (ME.mode === "secure") {
+    $("#user-chip").hidden = false;
+    $("#user-chip").textContent = `${ME.display} · ${ME.roles.join(", ")}`;
+    $("#user-chip").title = `Signs as ${ME.actor}`;
+    $("#logout-btn").hidden = false;
+    $("#demo-btn").hidden = true;                   // the guided demo acts in every role: demo mode only
+    $("#tamper-btn").hidden = !ME.permissions.includes("admin");
+    if (!ME.permissions.includes("clock"))             // exercise control only; the server enforces it too
+      for (const id of ["#adv1", "#adv7", "#clock-reset", "#shock-btn"]) { $(id).disabled = true; $(id).title = "Exercise control only"; }
+  }
+  return true;
+}
+
+function loginSetup() {
+  $("#login-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    try {
+      await api("/api/login", { username: $("#login-user").value, password: $("#login-pass").value });
+      location.reload();
+    } catch (e) { $("#login-pass").value = ""; showLogin(e.message); }
+  });
+  $("#logout-btn").addEventListener("click", async () => {
+    try { await api("/api/logout", {}); } finally { location.reload(); }
+  });
+}
+
 async function init() {
+  loginSetup();
+  if (!(await whoAmI())) { showLogin(); return; }
   try {
     [S.report, S.ledger] = await Promise.all([api("/api/report"), api("/api/ledger")]);
   } catch (e) {

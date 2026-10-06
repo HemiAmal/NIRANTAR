@@ -28,7 +28,7 @@ def get(url):
 
 def post(url, body):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", "X-Nirantar": "1"})
     try:
         with urllib.request.urlopen(req) as r:
             return r.status, json.loads(r.read())

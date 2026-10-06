@@ -259,7 +259,8 @@ class SaarthiDesk:
                 "lang": p.get("lang"), "input": p.get("input"), "entry_seconds": p.get("entry_seconds"),
                 "edited_fields": p.get("edited_fields", [])}
 
-    def confirm(self, body: dict) -> dict:
+    def confirm(self, body: dict, signer: Signer | None = None) -> dict:
+        """Sign the entry: with the logged-in user's key when given, else the desk's."""
         res = self._check(body.get("fields", {}), body.get("findings"))
         if not res["ready"]:
             raise ValueError("entry is not ready: " + "; ".join(c["title"] for c in res["checks"]
@@ -293,7 +294,7 @@ class SaarthiDesk:
             "checks": [{"id": c["id"], "status": c["status"]} for c in res["checks"]],
             "extractor": EXTRACTOR_VERSION, "day": self.day,
         }
-        e = self.ledger.append("snag_entry", payload, self.signer)
+        e = self.ledger.append("snag_entry", payload, signer or self.signer)
         self._apply(payload)
         summary = self._summary(e)
         self.entries.append(summary)

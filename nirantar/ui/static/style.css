@@ -258,3 +258,16 @@ td.small, .small { font-size: 12px; color: var(--text-secondary); }
 @media (max-width: 700px) {
   .guide { left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 55vh; }
 }
+
+/* sign-in (secure mode) */
+.login[hidden] { display: none; }
+.user-chip { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.login { position: fixed; inset: 0; background: var(--surface-2); display: flex; align-items: center;
+  justify-content: center; padding: 16px; z-index: 50; }
+.login-card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; }
+.login-card h2 { margin: 0; }
+.login-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-secondary); }
+.login-field input { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface-1); color: var(--text-primary); }
+.login-error { color: var(--critical); min-height: 1.2em; margin: 0; font-size: 13px; }
+@media (max-width: 720px) { .user-chip { display: none; } }
