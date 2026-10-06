@@ -3,8 +3,9 @@
 A real deployment never sees the simulator's hidden truth. Everything the twin
 needs is estimated here from the SETU store:
 
-* **Part reliability** (Weibull shape per system, scale per part number,
-  environment effects) and **repair quality** per agency: DHANVANTARI's fit.
+* **Part reliability** (Weibull shape and scale per part number, shrunk towards
+  its system's, environment effects) and **repair quality** per agency:
+  DHANVANTARI's fit, with the specification chosen by the last ``refit``.
 * **Each unit's own failure tendency**: the gamma-frailty posterior mean
   ``(k + failures) / (k + expected failures)`` from the same fit, so a unit
   that keeps failing is planned as one.
@@ -194,7 +195,8 @@ def estimate(store: Store, model: TierCModel | None = None, rogue_p: float = 0.5
     family_of = parts["family"].to_dict()
     sp, rep = fr["spells"], fr["repairs"]
     if model is None:
-        model = fit_tier_c(sp, family_of)
+        spec = json.loads(store.meta("model_spec") or "{}")
+        model = fit_tier_c(sp, family_of, part_shape=spec.get("part_shape", True))
 
     # serial numbers -> dense planning ids
     serials = sorted(set(sp["serial"]) | set(rep["serial"]) | set(fr["onhand"]["serial"]) | set(fr["receipts"]["serial"]))
@@ -226,7 +228,7 @@ def estimate(store: Store, model: TierCModel | None = None, rogue_p: float = 0.5
     pns = {}
     for pn, p in parts.iterrows():
         fam = p["family"]
-        beta = float(np.exp(model.log_beta_f[model._fam[fam]])) if fam in model._fam else 1.5
+        beta = model.params(pn, "")[0] if fam in model._fam else 1.5
         eta = float(np.exp(model.log_eta_p[model._pn[pn]])) if pn in model._pn else \
             float(np.exp(model.mu_f[model._fam[fam]])) if fam in model._fam else 400.0
         pns[pn] = PartNumber(pn, p["name"], fam, p["fleet"], p["origin"], beta, eta, int(p["positions"]),

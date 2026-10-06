@@ -18,6 +18,8 @@ include = ["nirantar*"]
 
 [tool.setuptools.package-data]
 "nirantar.ui" = ["static/*"]
+"nirantar.setu" = ["mappings/*.json"]
+"nirantar.pariksha" = ["datasets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

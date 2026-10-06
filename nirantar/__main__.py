@@ -34,6 +34,12 @@ def main() -> None:
     bt = sub.add_parser("records-backtest", help="plan from exported records, score in the synthetic fleet's truth")
     bt.add_argument("--out", default="experiments/results")
     bt.add_argument("--workers", type=int, default=None)
+    rf = sub.add_parser("refit", help="refit the reliability model on the record store, back-tested on the last year")
+    rf.add_argument("--db", default="data/nirantar.db")
+    rf.add_argument("--results", default="experiments/results", help="whose ledger signs the model card")
+    rf.add_argument("--holdout-days", type=float, default=365.0)
+    vp = sub.add_parser("validate-public", help="check DHANVANTARI on real public reliability data")
+    vp.add_argument("--out", default="experiments/results")
     ev = sub.add_parser("saarthi-eval", help="score the SAARTHI snag extractor on synthetic utterances")
     ev.add_argument("--n", type=int, default=900)
     ev.add_argument("--seed", type=int, default=0)
@@ -88,6 +94,29 @@ def main() -> None:
         Path(args.out).mkdir(parents=True, exist_ok=True)
         (Path(args.out) / "records_backtest.json").write_text(json.dumps(clean_json(r), indent=1), encoding="utf-8")
         print(json.dumps(r["summary"], indent=1))
+        return
+    if args.cmd == "refit":
+        from pathlib import Path
+
+        from nirantar.chitragupta.ledger import Ledger, Signer
+        from nirantar.setu.refit import refit
+        from nirantar.setu.schema import Store
+        res = Path(args.results)
+        card = refit(Store(args.db), args.holdout_days, ledger=Ledger(res / "ledger.jsonl"),
+                     signer=Signer.load_or_create(res / "keys" / "setu.key", "setu"))
+        print(f"model v{card['version']} ({card['spec']}) as of {card['as_of']}, ledger #{card['ledger_seq']}; "
+              f"drift: {card['drift'] or 'none'}")
+        return
+    if args.cmd == "validate-public":
+        import json
+        from pathlib import Path
+
+        from nirantar.pipeline import clean_json
+        from nirantar.pariksha.studies import run_all
+        r = run_all()
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        (Path(args.out) / "public_validation.json").write_text(json.dumps(clean_json(r), indent=1), encoding="utf-8")
+        print(f"-> {Path(args.out) / 'public_validation.json'}")
         return
     if args.cmd == "saarthi-eval":
         import json

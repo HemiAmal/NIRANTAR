@@ -1,6 +1,6 @@
 # NIRANTAR data foundation: planning from records (SETU)
 
-> **Status:** built and tested (104 tests passing in the whole repository). NIRANTAR can now run from maintenance and supply records alone: e-MMS-style installation, repair-order and defect files, plus IMMOLS-style stores receipts and stock. It imports and checks them, estimates the world and today's fleet state, and runs the Decision desk, Operations clock and SAARTHI on that estimate. A back-test plans from exported records and scores the plans in the hidden truth.
+> **Status:** built and tested (104 tests passing when written; see the README for the current count). NIRANTAR can now run from maintenance and supply records alone: e-MMS-style installation, repair-order and defect files, plus IMMOLS-style stores receipts and stock. It imports and checks them, estimates the world and today's fleet state, and runs the Decision desk, Operations clock and SAARTHI on that estimate. A back-test plans from exported records and scores the plans in the hidden truth.
 >
 > All data is synthetic (BHARAT-FLEET exported in e-MMS/IMMOLS shape). No number here is an IAF result. The file layouts are representative, not the real systems' schemas; connecting a real export means writing its mapping file (§2).
 
@@ -85,25 +85,25 @@ Each gap closes by adding its record type to the mapping and schema.
 
 | Cut-off (history) | Supply regime true / estimated | Claimed | **Realised in truth** | Oracle | Oracle, supply as records | Regret from records (95% CI) |
 |---|---|---|---|---|---|---|
-| 1095 (99) | disrupted / stressed | +305 | **+306** | +342 | +327 | +21 [2, 41] |
-| 1460 (99) | stressed 4 days / normal | +76 | **+81** | +184 | +73 | −8 [−17, 0] |
-| 1825 (99) | stressed / stressed | +200 | **+164** | +167 | +162 | −2 [−21, 18] |
-| 1500 (7) | normal / normal | +198 | **+183** | +151 | +151 | −32 [−46, −18] |
-| 1825 (5) | stressed / stressed | +245 | **+227** | +180 | +177 | −50 [−66, −34] |
+| 1095 (99) | disrupted / stressed | +293 | **+303** | +342 | +327 | +24 [5, 43] |
+| 1460 (99) | stressed 4 days / normal | +91 | **+86** | +184 | +73 | −13 [−25, 0] |
+| 1825 (99) | stressed / stressed | +199 | **+159** | +167 | +162 | +3 [−15, 22] |
+| 1500 (7) | normal / normal | +207 | **+175** | +151 | +151 | −24 [−40, −8] |
+| 1825 (5) | stressed / stressed | +238 | **+227** | +180 | +177 | −50 [−68, −32] |
 
 Values are weighted aircraft-available-days over 90 days against today's procedures.
 
 **What this shows:**
 
-- **Given the same supply knowledge, planning from records loses nothing measurable.** Mean regret is −14 aircraft-days; negative means the records plan did slightly better. Planning on 24 futures is noisy, so in any one case either planner can be the luckier.
+- **Given the same supply knowledge, planning from records loses nothing measurable.** Mean regret is −12 aircraft-days; negative means the records plan did slightly better. Planning on 24 futures is noisy, so in any one case either planner can be the luckier.
 - **The one large gap (day 1460) is information nobody had.** Russian supply turned stressed four days before the cut-off, before any shipment could show it. An oracle given the same supply knowledge does no better (+73).
-- **The plan's claimed value is honest within about 12 aircraft-days on average.** It is slightly optimistic, which is expected because choosing the best-looking actions favours lucky estimates (the fresh-future check in docs/06 exists for this). The 90-day availability forecast from records is within −1.2 points of the truth on average (range −3.7 to +2.5).
+- **The plan's claimed value is honest within about 16 aircraft-days on average.** It is slightly optimistic, which is expected because choosing the best-looking actions favours lucky estimates (the fresh-future check in docs/06 exists for this). The 90-day availability forecast from records is within −1.2 points of the truth on average (range −3.7 to +2.3).
 - **What improved through the back-test:**
   - Shipping legs of units in transit now use the estimated regime.
   - The regime estimate became a calibrated filter instead of a median of recent legs.
   - Plans now integrate over the regime belief.
 
-  Together these cut over-claiming from 34 to 12 aircraft-days and forecast bias from −2.0 to −1.2 points.
+  Together these cut over-claiming from 34 to 12 aircraft-days and forecast bias from −2.0 to −1.2 points. (Figures in the table are from the later run with per-part wear-out shape, docs/11: over-claiming 16, forecast −1.2.)
 
 ---
 
