@@ -247,6 +247,9 @@ class Importer:
                 self.store.set_meta("epoch", m["epoch"])
             if m.get("as_of") and (self.store.meta("as_of") or "") < m["as_of"]:
                 self.store.set_meta("as_of", m["as_of"])
+        risk = folder / "masters/supply_risk.json"
+        if risk.exists():                      # supplier regime model: a planning assumption kept as master data
+            self.store.set_meta("supply_risk", json.dumps(json.loads(risk.read_text(encoding="utf-8"))))
         specs = self.mapping["sources"]
         order = sorted(specs, key=lambda rel: ORDER.index(specs[rel]["table"]))
         reports = [self.import_file(folder, rel, specs[rel]) for rel in order]

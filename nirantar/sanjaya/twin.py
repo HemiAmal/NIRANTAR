@@ -851,10 +851,13 @@ class Twin:
                         sp.update({"removal_day": np.nan, "exit_fh": float(self.X[sid]), "removal_reason": None})
                         open_spells.append(sp)
             in_progress = []
+            started = {dict(p)["sid"]: dict(p).get("start", np.nan) for _, _, k, p in self._events if k == "REPAIR_DONE"}
             for item in self.snapshot()["pipeline"]:
                 if item["type"] in ("job", "inrepair"):
                     in_progress.append({"serial": item["sid"], "pn": item["pn"], "agency": item["agency"],
-                                        "sent_day": item["sent"], "start_day": np.nan, "done_day": np.nan,
+                                        "sent_day": item["sent"], "done_day": np.nan,
+                                        "start_day": started.get(item["sid"], np.nan) if item["type"] == "inrepair"
+                                        else np.nan,
                                         "deep_strip": item["deep"], "overhaul": item.get("overhaul", False),
                                         "from_base": item["from"], "fh_since_repair": np.nan})
             records = {"spells": self.spells + open_spells, "repairs": self.repairs + in_progress,

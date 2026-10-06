@@ -43,6 +43,12 @@ def _write(path: Path, header: list[str], rows: list[list]) -> None:
         w.writerows(rows)
 
 
+def supply_risk(world: World) -> dict:
+    """The supplier regime model (levels, delay multipliers, daily transitions) as master data."""
+    return {c: {"states": list(m.states), "multipliers": list(m.tat_multiplier),
+                "transition": [list(r) for r in m.transition]} for c, m in world.regimes.items()}
+
+
 def export(world: World, records: dict, snapshot: dict, horizon_day: float, out: str | Path,
            epoch: datetime = EPOCH, defect_rate: float = 0.0, seed: int = 0) -> dict:
     """Write masters, e-MMS and IMMOLS files plus a manifest. Returns the manifest
@@ -95,6 +101,7 @@ def export(world: World, records: dict, snapshot: dict, horizon_day: float, out:
     _write(out / "immols/onhand.csv", ["ASOFDATE", "DEPOT", "PARTNO", "SERIALNO"],
            [[as_of, base, pn, serial_id(sid)] for (base, pn), sids in snapshot["stock"].items() for sid in sids
             if pn_of.get(int(sid), pn) == pn])
+    (out / "masters/supply_risk.json").write_text(json.dumps(supply_risk(world), indent=1), encoding="utf-8")
     manifest = {"generator": "BHARAT-FLEET (synthetic)", "epoch": _t(0.0, epoch), "as_of": as_of,
                 "files": sorted(str(p.relative_to(out)).replace("\\", "/") for p in out.rglob("*.csv")),
                 "planted_defects": planted}
