@@ -44,6 +44,14 @@ def main() -> None:
     rs.add_argument("--db", default=None)
     rs.add_argument("--users", default=None)
     rs.add_argument("--force", action="store_true", help="replace existing files")
+    bd = sub.add_parser("bundle", help="build an offline install bundle (run on a machine with internet)")
+    bd.add_argument("--out", default="dist/offline")
+    bd.add_argument("--target", action="append", default=None, help="platform:python, e.g. win_amd64:3.14")
+    bd.add_argument("--key", default=None, help="release signing key (default experiments/results/keys/release.key)")
+    vb = sub.add_parser("verify-bundle", help="check an offline bundle's hashes and release signature")
+    vb.add_argument("folder")
+    vb.add_argument("--trusted-key", default=None, help="the release public key you were given")
+    sub.add_parser("selftest", help="check that this node has everything NIRANTAR needs")
     mc = sub.add_parser("make-cert", help="create a self-signed TLS certificate for the console")
     mc.add_argument("--out", default="experiments/results/keys")
     mc.add_argument("--host", action="append", default=None, help="host name or IP the console is reached at")
@@ -145,6 +153,20 @@ def main() -> None:
             w = B.restore(args.folder, args.results, {"store": args.db, "users": args.users}, args.force)
             print(f"restored {len(w)} files")
         return
+    if args.cmd == "bundle":
+        from nirantar.release import build_bundle
+        build_bundle(args.out, args.target or ["win_amd64:3.14", "manylinux2014_x86_64:3.11"], key=args.key)
+        return
+    if args.cmd == "verify-bundle":
+        import json
+
+        from nirantar.release import verify_bundle
+        v = verify_bundle(args.folder, args.trusted_key)
+        print(json.dumps(v, indent=1))
+        raise SystemExit(0 if v["ok"] else 1)
+    if args.cmd == "selftest":
+        from nirantar.release import selftest
+        raise SystemExit(0 if selftest() else 1)
     if args.cmd == "users":
         from nirantar.rakshak.cli import users_command
         users_command(args)
