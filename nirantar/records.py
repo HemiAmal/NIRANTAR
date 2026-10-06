@@ -10,4 +10,5 @@ def to_frames(records: dict) -> dict[str, pd.DataFrame]:
         "spells": pd.DataFrame(records["spells"]),
         "repairs": pd.DataFrame(records["repairs"]),
         "snags": pd.DataFrame(records["snags"]),
+        "receipts": pd.DataFrame(records.get("receipts", [])),
     }

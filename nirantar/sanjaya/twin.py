@@ -253,6 +253,7 @@ class Twin:
         self.spells: list[dict] = []
         self.repairs: list[dict] = []
         self.snags: list[dict] = []
+        self.receipts: list[dict] = []
 
         if start is None:
             for (tail_id, pn, k), sid in w.initial_install.items():
@@ -475,7 +476,7 @@ class Twin:
                 "serial": sid, "pn": self.pn_of(sid), "tail": tail["id"], "fleet": tail["fleet"],
                 "base": tail["base"], "env": tail["env"], "install_day": self.t,
                 "entry_fh": float(self.X[sid]), "prev_agency": prev_agency,
-                "n_prior_repairs": len(self.hist.get(sid, [])),
+                "n_prior_repairs": len(self.hist.get(sid, [])), "position": int(slot[1]) + 1,
             }
 
     def _end_spell(self, tail: dict, slot, sid: int, reason: Optional[str]) -> None:
@@ -593,7 +594,7 @@ class Twin:
         for _ in range(qty):
             if not self.stock[(src, pn)]:
                 break                                   # nothing left to send (used meanwhile)
-            self._push(self.t + LATERAL_DAYS, "ARRIVE", (dst, self.stock[(src, pn)].pop(0)))
+            self._push(self.t + LATERAL_DAYS, "ARRIVE", (dst, self.stock[(src, pn)].pop(0), "transfer"))
 
     def _on_FLAG(self, payload) -> None:
         kind, sid = payload
@@ -625,6 +626,9 @@ class Twin:
 
     def _on_ARRIVE(self, payload) -> None:
         base, sid = payload[0], payload[1]
+        if self.record:
+            src = payload[2] if len(payload) > 2 else ("repair" if self.hist.get(sid) else "new")
+            self.receipts.append({"day": self.t, "base": base, "serial": sid, "pn": self.pn_of(sid), "source": src})
         self.expedited.discard(sid)
         self.priority.discard(sid)
         pn = self.pn_of(sid)
@@ -854,7 +858,7 @@ class Twin:
                                         "deep_strip": item["deep"], "overhaul": item.get("overhaul", False),
                                         "from_base": item["from"], "fh_since_repair": np.nan})
             records = {"spells": self.spells + open_spells, "repairs": self.repairs + in_progress,
-                       "snags": self.snags}
+                       "snags": self.snags, "receipts": self.receipts}
         return RunResult(
             policy=self.policy.name, scenario=self.scenario.name, seed=self.seed, horizon=H,
             fleet_daily_availability=fleet_avail, mean_availability=mean_av,
