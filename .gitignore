@@ -13,3 +13,7 @@ dist/
 
 # operations-clock state and day plans of a local console
 experiments/results/live/
+
+# local record stores and generated exports
+data/
+*.db
