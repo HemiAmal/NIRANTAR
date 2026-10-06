@@ -31,6 +31,9 @@ def main() -> None:
     im.add_argument("--db", default="data/nirantar.db")
     im.add_argument("--mapping", default=None, help="mapping file (default: nirantar/setu/mappings/default.json)")
     im.add_argument("--results", default="experiments/results", help="whose ledger signs each accepted batch")
+    bt = sub.add_parser("records-backtest", help="plan from exported records, score in the synthetic fleet's truth")
+    bt.add_argument("--out", default="experiments/results")
+    bt.add_argument("--workers", type=int, default=None)
     ev = sub.add_parser("saarthi-eval", help="score the SAARTHI snag extractor on synthetic utterances")
     ev.add_argument("--n", type=int, default=900)
     ev.add_argument("--seed", type=int, default=0)
@@ -73,6 +76,18 @@ def main() -> None:
             print(f"{b['file']:28s} {b['rows']:6d} rows  {b['accepted']:6d} accepted  {b['quarantined']:4d} quarantined"
                   + (f"  {b['issues']}" if b["issues"] else ""))
         print("cross-record issues:", rep["data_issues"] or "none", "| store:", args.db)
+        return
+    if args.cmd == "records-backtest":
+        import json
+        from pathlib import Path
+
+        from nirantar.bharat_fleet.world import make_world
+        from nirantar.pipeline import clean_json
+        from nirantar.setu.backtest import backtest
+        r = backtest(make_world(seed=7), workers=args.workers)
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        (Path(args.out) / "records_backtest.json").write_text(json.dumps(clean_json(r), indent=1), encoding="utf-8")
+        print(json.dumps(r["summary"], indent=1))
         return
     if args.cmd == "saarthi-eval":
         import json

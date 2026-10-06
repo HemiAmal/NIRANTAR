@@ -186,13 +186,15 @@ class Twin:
         self.t = 0.0
         self.expedited: set[int] = {a.serial for a in actions if a.kind == "expedite" and a.start_day <= 0}
         self.priority: set[int] = {a.serial for a in actions if a.kind == "priority" and a.start_day <= 0}
-        self._init_regimes((start or {}).get("regimes", {}))
+        self._init_regimes((start or {}).get("regimes", {}), (start or {}).get("regime_probs"))
         self._init_state(start)
         self._apply_actions()
 
     # ------------------------------------------------------------ setup
 
-    def _init_regimes(self, initial: dict[str, int] | None = None) -> None:
+    def _init_regimes(self, initial: dict[str, int] | None = None, probs: dict | None = None) -> None:
+        """Daily regime paths. ``probs`` (country -> probability of each regime today, when today's
+        regime is only estimated) draws each future's starting regime from that belief."""
         n_days = int(self.H) + 2
         self.regime_state: dict[str, np.ndarray] = {}
         for c, m in self.w.regimes.items():
@@ -201,6 +203,8 @@ class Twin:
             if len(m.states) > 1:
                 g = krng(self.seed, "regime", c)
                 u = g.random(n_days)
+                if probs and c in probs:                     # u[0] is otherwise unused
+                    states[0] = min(int(np.searchsorted(np.cumsum(probs[c]), u[0])), len(m.states) - 1)
                 P = np.cumsum(np.array(m.transition), axis=1)
                 for d in range(1, n_days):
                     states[d] = int(np.searchsorted(P[states[d - 1]], u[d]))
