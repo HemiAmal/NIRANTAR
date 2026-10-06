@@ -18,6 +18,8 @@
   </div>
   <div class="top-right">
     <span class="banner" role="note">Synthetic demo data (BHARAT-FLEET). Not IAF data.</span>
+    <span id="user-chip" class="user-chip" hidden></span>
+    <button id="logout-btn" class="ghost" type="button" hidden>Log out</button>
     <button id="demo-btn" class="ghost" type="button" aria-controls="guide">Guided demo</button>
     <button id="theme" class="ghost" type="button" aria-label="Toggle light or dark theme">Theme</button>
   </div>
@@ -276,6 +278,13 @@
       <div id="verify-result" role="status"></div>
       <div id="ledger-table"></div>
     </div>
+    <div class="card" id="access-card" hidden>
+      <h3>Access: user accounts and sign-in log</h3>
+      <p class="muted small">Accounts are managed on the server with <code>python -m nirantar users</code>. Each user signs with their own key; a password reset issues a new one.</p>
+      <div id="access-users"></div>
+      <h4>Recent sign-in and access events</h4>
+      <div id="access-audit"></div>
+    </div>
   </section>
 </main>
 
@@ -295,6 +304,16 @@
   </div>
   <p class="hint">Keys: ← back · → next · D do it</p>
 </aside>
+<div id="login" class="login" hidden>
+  <form id="login-form" class="card login-card" autocomplete="on">
+    <h2>Sign in to NIRANTAR</h2>
+    <p class="muted small">Your decisions are signed with your own key, unlocked by your passphrase for this session only.</p>
+    <label class="login-field">Username <input id="login-user" name="username" autocomplete="username" required></label>
+    <label class="login-field">Passphrase <input id="login-pass" name="password" type="password" autocomplete="current-password" required></label>
+    <button class="primary" type="submit">Sign in</button>
+    <p id="login-error" class="login-error" role="alert"></p>
+  </form>
+</div>
 <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <script src="/app.js"></script>

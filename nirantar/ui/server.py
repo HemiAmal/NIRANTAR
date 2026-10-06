@@ -41,10 +41,16 @@ MAX_SEEDS = 16
 class Console:
     """Server-side state: report, ledger and a lazily built simulation context."""
 
-    def __init__(self, results_dir: str | Path, plan_kwargs: dict | None = None, store: str | Path | None = None):
+    def __init__(self, results_dir: str | Path, plan_kwargs: dict | None = None, store: str | Path | None = None,
+                 auth: "UserStore | None" = None):
         """``store``: a SETU record store. With it the desk, clock and SAARTHI plan from the records
         (world and fleet state estimated, nothing taken from the simulator); without it they use the
-        synthetic fleet's hidden truth, as in the demo."""
+        synthetic fleet's hidden truth, as in the demo.
+
+        ``auth``: a RAKSHAK user store. With it every request needs a login, the server enforces each
+        user's roles, and decisions and snags are signed with the user's own key. Without it (a demo on
+        one machine) anyone at the console may act in any role, signed by the console's key."""
+        self.auth = auth
         self.dir = Path(results_dir)
         self.store_path = Path(store) if store else None
         if self.store_path and not self.store_path.exists():
@@ -175,7 +181,7 @@ class Console:
         v["plan_status"] = self.planner().state["status"]
         return v
 
-    def advance(self, body: dict) -> dict:
+    def advance(self, body: dict, session=None) -> dict:
         days = int(body.get("days", 1))
         if days not in (1, 7):
             raise ValueError("advance 1 or 7 days")
@@ -191,11 +197,12 @@ class Console:
             clk.advance(days, acts, meta)
             for it in items:
                 self.ledger.append("execution", {"recommendation_seq": it["ledger_seq"], "action": it["label"],
-                                                 "applied_on_day": d0, "via": "operations clock"}, self.signer)
+                                                 "applied_on_day": d0, "via": "operations clock",
+                                                 **({"by": session.display} if session else {})}, self.signer)
         self.planner().build_async()                 # a fresh plan for the new day
         return self.clock_view()
 
-    def disrupt(self, body: dict) -> dict:
+    def disrupt(self, body: dict, session=None) -> dict:
         country = body.get("country")
         if country not in ("RU", "FR"):
             raise ValueError("country must be RU or FR")
@@ -208,7 +215,8 @@ class Console:
         with self._lock:
             shock = clk.disrupt(country, days)
             self.ledger.append("scenario", {"supplier": country, "state": "disrupted", "from_day": shock["start"],
-                                            "to_day": shock["end"], "via": "exercise control"}, self.signer)
+                                            "to_day": shock["end"], "via": "exercise control"},
+                               session.signer if session else self.signer)
         self.planner().build_async()                 # re-plan for the crisis
         return self.clock_view()
 
@@ -238,10 +246,10 @@ class Console:
                 self._planner.n_shocks = n_shocks
             return self._planner
 
-    def saarthi_confirm(self, body: dict) -> dict:
+    def saarthi_confirm(self, body: dict, session=None) -> dict:
         desk = self.desk()
         with self._lock:
-            return desk.confirm(body)
+            return desk.confirm(body, signer=session.signer if session else None)
 
     # -- ledger ----------------------------------------------------------
     def ledger_view(self, limit: int = 200) -> dict:
@@ -252,7 +260,7 @@ class Console:
         return {"entries": rows, "count": len(self.ledger.entries), "failed": bad,
                 "tree_head": {"size": sth["size"], "root": sth["root"][:24], "witness": sth["witness"]}}
 
-    def decide(self, body: dict) -> dict:
+    def decide(self, body: dict, session=None) -> dict:
         verdict = body.get("verdict")
         if verdict not in ("accept", "defer", "reject"):
             raise ValueError("verdict must be accept, defer or reject")
@@ -262,6 +270,8 @@ class Console:
         reason = str(body.get("reason_code", "WEB_CONSOLE"))[:64]
         role = body.get("role")
         role = str(role)[:40] if role else None
+        if session is not None and role not in session.roles:
+            raise PermissionError(f"you do not hold the role {role!r}")
         planner = self.planner()
         rec_plan = self.ledger.entries[seq]["payload"].get("plan_id")
         if rec_plan and (planner.plan is None or rec_plan != planner.plan.get("plan_id")):
@@ -270,8 +280,10 @@ class Console:
         payload = {"recommendation_seq": seq, "verdict": verdict, "reason_code": reason, "via": "web console"}
         if role:
             payload["role"] = role
+        if session is not None:
+            payload["by"] = session.display
         with self._lock:
-            e = self.ledger.append("decision", payload, self.signer)
+            e = self.ledger.append("decision", payload, session.signer if session else self.signer)
         return {"seq": e["seq"], "hash": e["entry_hash"][:16], "verdict": verdict}
 
     def tamper_demo(self, body: dict) -> dict:
@@ -291,42 +303,133 @@ class Console:
                 "detected": shadow.verify_all(sth), "real_ledger_intact": self.ledger.verify_all(sth) == []}
 
 
-def make_handler(console: Console):
+MAX_BODY = 65536
+COOKIE = "nirantar_session"
+CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
+       "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+
+
+def _which(body: dict) -> str:
+    which = body.get("which", "approved")
+    if which not in ("approved", "all"):
+        raise ValueError("which must be approved or all")
+    return which
+
+
+# path -> (permission, handler(console, session, body))
+GET_ROUTES = {
+    "/api/report": ("view", lambda c, s, b: c.report),
+    "/api/ledger": ("view", lambda c, s, b: c.ledger_view()),
+    "/api/plan": ("view", lambda c, s, b: c.planner().view()),
+    "/api/clock": ("view", lambda c, s, b: c.clock_view()),
+    "/api/source": ("view", lambda c, s, b: c.source()),
+    "/api/saarthi/options": ("view", lambda c, s, b: c.desk().options()),
+    "/api/saarthi/entries": ("view", lambda c, s, b: {"entries": c.desk().entries[-50:][::-1],
+                                                      "stats": c.desk().stats()}),
+    "/api/admin/users": ("admin", lambda c, s, b: {"users": c.auth.users()}),
+    "/api/admin/audit": ("admin", lambda c, s, b: {"audit": c.auth.audit_log()}),
+}
+POST_ROUTES = {
+    "/api/simulate": ("simulate", lambda c, s, b: c.simulate(b)),
+    "/api/decision": ("decide", lambda c, s, b: c.decide(b, s)),
+    "/api/ledger/tamper-demo": ("admin", lambda c, s, b: c.tamper_demo(b)),
+    "/api/clock/advance": ("clock", lambda c, s, b: c.advance(b, s)),
+    "/api/clock/disrupt": ("clock", lambda c, s, b: c.disrupt(b, s)),
+    "/api/clock/reset": ("clock", lambda c, s, b: c.reset_clock()),
+    "/api/plan/build": ("plan", lambda c, s, b: c.planner().build_async()),
+    "/api/plan/outcome": ("view", lambda c, s, b: c.planner().outcome(_which(b))),
+    "/api/saarthi/parse": ("snag", lambda c, s, b: c.desk().parse(b.get("text", ""))),
+    "/api/saarthi/check": ("snag", lambda c, s, b: c.desk().check(b.get("fields", {}), b.get("findings"))),
+    "/api/saarthi/confirm": ("snag", lambda c, s, b: c.saarthi_confirm(b, s)),
+}
+
+
+def make_handler(console: Console, tls: bool = False):
+    from nirantar.rakshak.auth import AuthError
+
     class Handler(BaseHTTPRequestHandler):
-        server_version = "NIRANTAR/0.1"
+        server_version = "NIRANTAR"
+        sys_version = ""
 
         def log_message(self, fmt, *args):     # quiet console
             pass
 
-        def _send(self, code: int, body: bytes, ctype: str) -> None:
+        def _send(self, code: int, body: bytes, ctype: str, cookie: str | None = None) -> None:
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Security-Policy", CSP)
+            if tls:
+                self.send_header("Strict-Transport-Security", "max-age=31536000")
+            if cookie is not None:
+                self.send_header("Set-Cookie", cookie)
             self.end_headers()
             self.wfile.write(body)
 
-        def _json(self, obj, code: int = 200) -> None:
-            self._send(code, json.dumps(clean_json(obj), default=str, allow_nan=False).encode(), "application/json")
+        def _json(self, obj, code: int = 200, cookie: str | None = None) -> None:
+            self._send(code, json.dumps(clean_json(obj), default=str, allow_nan=False).encode(), "application/json",
+                       cookie)
+
+        def _token(self) -> str | None:
+            for part in (self.headers.get("Cookie") or "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == COOKIE:
+                    return v
+            return None
+
+        def _cookie(self, token: str, max_age: int) -> str:
+            return (f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}"
+                    + ("; Secure" if tls else ""))
+
+        def _session(self):
+            """(allowed, session): demo mode has no sessions; with auth a valid session is required."""
+            if console.auth is None:
+                return True, None
+            s = console.auth.session(self._token())
+            return s is not None, s
+
+        def _call(self, routes: dict, path: str, body: dict):
+            perm, fn = routes[path]
+            ok, s = self._session()
+            if not ok:
+                return self._json({"error": "please log in"}, 401)
+            if s is not None and not s.can(perm):
+                console.auth.audit(s.username, "forbidden", path, self.client_address[0])
+                return self._json({"error": "your role does not allow this"}, 403)
+            if console.auth is None and perm == "admin" and path.startswith("/api/admin"):
+                return self._json({"error": "no user accounts in demo mode"}, 404)
+            return self._json(fn(console, s, body))
+
+        def _guard(self, handler):
+            try:
+                return handler()
+            except AuthError as exc:
+                return self._json({"error": str(exc)}, 403)
+            except PermissionError as exc:
+                return self._json({"error": str(exc)}, 403)
+            except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+                return self._json({"error": str(exc)}, 400)
+            except Exception:                    # never leak internals; keep the trace on the server
+                import traceback
+                traceback.print_exc()
+                return self._json({"error": "internal error"}, 500)
 
         def do_GET(self):
+            self._guard(self._get)
+
+        def _get(self):
             path = urlparse(self.path).path
-            if path == "/api/report":
-                return self._json(console.report)
-            if path == "/api/ledger":
-                return self._json(console.ledger_view())
-            if path == "/api/plan":
-                return self._json(console.planner().view())
-            if path == "/api/clock":
-                return self._json(console.clock_view())
-            if path == "/api/source":
-                return self._json(console.source())
-            if path == "/api/saarthi/options":
-                return self._json(console.desk().options())
-            if path == "/api/saarthi/entries":
-                desk = console.desk()
-                return self._json({"entries": desk.entries[-50:][::-1], "stats": desk.stats()})
+            if path == "/api/me":
+                ok, s = self._session()
+                if console.auth is None:
+                    return self._json({"mode": "demo"})
+                return self._json({"mode": "secure", **s.view()} if ok else {"error": "please log in"}, 200 if ok else 401)
+            if path in GET_ROUTES:
+                return self._call(GET_ROUTES, path, {})
             if path in ("/", "/index.html"):
                 path = "/index.html"
             f = (STATIC / path.lstrip("/")).resolve()
@@ -335,50 +438,75 @@ def make_handler(console: Console):
             self._send(200, f.read_bytes(), CONTENT_TYPES.get(f.suffix, "application/octet-stream"))
 
         def do_POST(self):
+            self._guard(self._post)
+
+        def _post(self):
             path = urlparse(self.path).path
-            try:
-                n = int(self.headers.get("Content-Length", "0"))
-                body = json.loads(self.rfile.read(min(n, 65536)) or b"{}")
-                if not isinstance(body, dict):
-                    raise ValueError("request body must be a JSON object")
-                if path == "/api/simulate":
-                    return self._json(console.simulate(body))
-                if path == "/api/decision":
-                    return self._json(console.decide(body))
-                if path == "/api/ledger/tamper-demo":
-                    return self._json(console.tamper_demo(body))
-                if path == "/api/clock/advance":
-                    return self._json(console.advance(body))
-                if path == "/api/clock/disrupt":
-                    return self._json(console.disrupt(body))
-                if path == "/api/clock/reset":
-                    return self._json(console.reset_clock())
-                if path == "/api/plan/build":
-                    return self._json(console.planner().build_async())
-                if path == "/api/plan/outcome":
-                    which = body.get("which", "approved")
-                    if which not in ("approved", "all"):
-                        raise ValueError("which must be approved or all")
-                    return self._json(console.planner().outcome(which))
-                if path == "/api/saarthi/parse":
-                    return self._json(console.desk().parse(body.get("text", "")))
-                if path == "/api/saarthi/check":
-                    return self._json(console.desk().check(body.get("fields", {}), body.get("findings")))
-                if path == "/api/saarthi/confirm":
-                    return self._json(console.saarthi_confirm(body))
-                return self._json({"error": "not found"}, 404)
-            except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
-                return self._json({"error": str(exc)}, 400)
+            # cross-site request forgery: a custom header (needs a CORS preflight we never grant) and same origin
+            if self.headers.get("X-Nirantar") != "1":
+                return self._json({"error": "missing request header"}, 403)
+            origin = self.headers.get("Origin")
+            if origin and urlparse(origin).netloc != self.headers.get("Host"):
+                return self._json({"error": "cross-origin request refused"}, 403)
+            n = int(self.headers.get("Content-Length", "0"))
+            if n > MAX_BODY:
+                return self._json({"error": "request too large"}, 413)
+            body = json.loads(self.rfile.read(n) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError("request body must be a JSON object")
+            if path == "/api/login":
+                if console.auth is None:
+                    return self._json({"mode": "demo"})
+                token, s = console.auth.login(str(body.get("username", ""))[:64], str(body.get("password", ""))[:256],
+                                              self.client_address[0])
+                return self._json({"mode": "secure", **s.view()}, cookie=self._cookie(token, 10 * 3600))
+            if path == "/api/logout":
+                if console.auth is not None:
+                    console.auth.logout(self._token())
+                return self._json({"ok": True}, cookie=self._cookie("", 0))
+            if path == "/api/me/password":
+                ok, s = self._session()
+                if console.auth is None or not ok:
+                    return self._json({"error": "please log in"}, 401)
+                console.auth.change_password(s.username, str(body.get("old", "")), str(body.get("new", "")))
+                return self._json({"ok": True})
+            if path in POST_ROUTES:
+                return self._call(POST_ROUTES, path, body)
+            return self._json({"error": "not found"}, 404)
 
     return Handler
 
 
+def _loopback(host: str) -> bool:
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
 def serve(results_dir: str = "experiments/results", host: str = "127.0.0.1", port: int = 8050,
-          store: str | None = None) -> None:
-    console = Console(results_dir, store=store)
-    httpd = ThreadingHTTPServer((host, port), make_handler(console))
-    print(f"NIRANTAR console on http://{host}:{port}  (Ctrl+C to stop)"
-          + (f"  planning from records in {store}" if store else ""))
+          store: str | None = None, auth_db: str | None = None, cert: str | None = None, key: str | None = None,
+          allow_insecure: bool = False) -> None:
+    """Demo on this machine (no logins), or a multi-user node: ``auth_db`` for logins and roles,
+    ``cert``/``key`` for HTTPS. Listening beyond this machine needs both, unless ``allow_insecure``."""
+    if not _loopback(host) and not allow_insecure and not (auth_db and cert and key):
+        raise SystemExit("refusing to listen beyond this machine without logins (--auth) and HTTPS (--cert, --key); "
+                         "use --allow-insecure only on an isolated test network")
+    auth = None
+    if auth_db:
+        from nirantar.rakshak.auth import UserStore
+        auth = UserStore(auth_db)
+        if not auth.users():
+            raise SystemExit(f"no user accounts in {auth_db}: add one with `python -m nirantar users add`")
+    console = Console(results_dir, store=store, auth=auth)
+    httpd = ThreadingHTTPServer((host, port), make_handler(console, tls=bool(cert)))
+    if cert:
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_cert_chain(cert, key)
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+    scheme = "https" if cert else "http"
+    print(f"NIRANTAR console on {scheme}://{host}:{port}  (Ctrl+C to stop)"
+          + (f"  planning from records in {store}" if store else "")
+          + ("  logins required" if auth else "  demo mode: no logins"))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
