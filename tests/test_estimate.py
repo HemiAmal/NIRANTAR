@@ -62,3 +62,22 @@ def test_without_a_supplier_risk_master_everything_is_assumed_normal(world, hist
     e = estimate(st)
     assert set(e.start["regimes"].values()) == {0}
     assert any("risk" in n for n in e.notes)
+
+
+def test_regime_belief_is_a_distribution_and_drives_the_futures(world, history, est):
+    probs = est.start["regime_probs"]
+    assert set(probs) == {c for c, m in world.regimes.items() if len(m.states) > 1}
+    for c, p in probs.items():
+        assert sum(p) == pytest.approx(1.0, abs=1e-3) and int(np.argmax(p)) == est.start["regimes"][c]
+    certain = {**est.start, "regime_probs": {c: [0.0] * (len(p) - 1) + [1.0] for c, p in probs.items()}}
+    for s in range(4):
+        t = Twin(est.world, P0, 5, seed=s, start=certain, resume=True)
+        assert all(t.regime_state[c][0] == len(p) - 1 for c, p in probs.items())
+
+
+def test_backtest_runs_end_to_end(world):
+    from nirantar.setu.backtest import backtest_cutoff
+    r = backtest_cutoff(world, 400, horizon=30, plan_seeds=4, score_seeds=4, workers=1, log=lambda *_: None)
+    assert r["state"]["fitted_units_correct"] == 1.0 and r["state"]["waiting_correct"] == 1.0
+    d = r["decisions"]
+    assert {"records_plan", "oracle_plan", "oracle_regime_as_records", "regret_wAAD"} <= set(d)

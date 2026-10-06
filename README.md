@@ -18,17 +18,22 @@ A sovereign decision platform for military aircraft predictive maintenance and f
 | 7 | [Milestone 4: Operations clock](docs/07_MILESTONE_4_OPERATIONS_CLOCK.md) | Run the station day by day: approved actions applied and signed, a shadow fleet on identical events measures what the decisions bought |
 | 8 | [Milestone 5: Crisis mode](docs/08_MILESTONE_5_CRISIS_MODE.md) | Declare a supplier disruption on any day; both fleets feel it, the desk re-plans (re-routing to Indian depots, expediting), the clock measures the result |
 | 9 | [7-minute demo script](docs/09_DEMO_SCRIPT.md) | A stakeholder briefing storyline as a presenter script; built into the console as **Guided demo** with live numbers and one-click steps |
+| 10 | [Data foundation: planning from records](docs/10_DATA_FOUNDATION.md) | Import e-MMS/IMMOLS-style records with checks and quarantine; estimate the world, today's fleet state and the supply regime from records alone; run the console on them; back-test plans from records against the hidden truth |
 
 ## Development
 
 ```bash
 python -m pip install -e ".[dev]"  # numpy, scipy, pandas, cryptography, pytest
-python -m pytest -q                # 90 tests
+python -m pytest -q                # 104 tests
 python -m nirantar demo --quick    # ~15 s end-to-end run
 python -m nirantar demo            # full run -> experiments/results/milestone1_report.md
 python -m nirantar serve           # web console -> http://127.0.0.1:8050
 python -m nirantar plan            # prepare today's decision-desk plan
 python -m nirantar saarthi-eval    # SAARTHI extractor benchmark
+python -m nirantar export-synthetic --out data/exports/bharat-fleet   # records in e-MMS/IMMOLS shape
+python -m nirantar import data/exports/bharat-fleet --db data/nirantar.db
+python -m nirantar serve --db data/nirantar.db   # console plans from the records
+python -m nirantar records-backtest  # plan from records, score in the hidden truth
 ```
 
 On Windows machines where an Application Control policy blocks `pip.exe` or `pytest.exe`, use the `python -m ...` forms above; they run through `python.exe`.
@@ -45,6 +50,7 @@ On Windows machines where an Application Control policy blocks `pip.exe` or `pyt
 | `nirantar/chanakya` | CHANAKYA | Marginal Readiness Value, Cost-of-Delay, portfolios, decision desk |
 | `nirantar/vishwakarma` | VISHWAKARMA | Readiness-weighted indigenisation ranking |
 | `nirantar/saarthi` | SAARTHI | Voice/text snag entry: Hindi, Hinglish, English to a checked, signed record |
+| `nirantar/setu` | SETU | Record store, mapped and checked import of e-MMS/IMMOLS-style exports, estimation of the world and fleet state from records, back-test against the truth |
 | `nirantar/ui` | Console | Offline web console with a guided 7-minute demo: readiness room, live what-if, decision desk, SAARTHI snag entry, opportunities, agencies, signals, indigenisation, ledger |
 
 All data in this repository is synthetic. No number is an IAF result.

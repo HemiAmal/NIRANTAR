@@ -118,36 +118,65 @@ def agency_stats(rep: pd.DataFrame, receipts: pd.DataFrame, agencies: pd.DataFra
     return pd.DataFrame(rows)
 
 
-def current_regimes(rep: pd.DataFrame, receipts: pd.DataFrame, stats: pd.DataFrame, risk: dict, now: float,
-                    window: float = 30.0) -> dict:
-    """Today's regime per supplier: the level nearest to how stretched recent shipping is.
+def regime_filter(rep: pd.DataFrame, receipts: pd.DataFrame, stats: pd.DataFrame, risk: dict, now: float,
+                  tol: float = 0.15, eps: float = 1e-3, queue_p: float = 0.1) -> dict[str, list[float]]:
+    """Probability of each supply regime today, per supplier country (hidden-Markov forward filter).
 
-    Return legs (repair finished -> received at base) are used because they hold no
-    queueing at the agency; outbound legs (sent -> repair started) are the fallback."""
-    out = {}
+    Shipping time is the agency's normal leg times the regime's multiplier on the day a unit
+    leaves, so the records carry three kinds of evidence:
+
+    * a completed return leg (repair finished -> received at base) reveals the multiplier;
+    * a repaired unit not yet received has been travelling at least that long (a lower bound);
+    * an outbound leg (sent -> repair started) also holds queueing, so it is an upper bound;
+    * a unit sent but not started has been travelling at least that long, unless it is queueing
+      at the agency (soft evidence, weighted by ``queue_p``).
+
+    The regime model's daily transitions carry the belief from day to day up to today.
+    """
     st = stats.set_index("agency")
     rec = receipts.sort_values("day")
     rec_by_serial = {s: g["day"].to_numpy() for s, g in rec.groupby("serial")}
+    out = {}
     for c, m in risk.items():
-        if len(m["multipliers"]) < 2:
-            out[c] = 0
+        mult = np.array(m["multipliers"], dtype=float)
+        k = len(mult)
+        if k < 2:
+            out[c] = [1.0]
             continue
+        T = np.array(m["transition"], dtype=float)
+        days = int(math.floor(now)) + 1
+        loglik = np.zeros((days, k))
         ags = [a for a in st.index if st.loc[a, "country"] == c]
-        ratios = []
         for r in rep[rep["agency"].isin(ags)].itertuples():
-            if r.done_day == r.done_day and r.done_day >= now - window:
-                days = rec_by_serial.get(r.serial)
-                after = days[days >= r.done_day - 1e-6] if days is not None else []
-                if len(after):
-                    ratios.append((after[0] - r.done_day) / max(st.loc[r.agency, "back_leg_base"], 0.1))
-        if not ratios:
-            rr = rep[rep["agency"].isin(ags) & (rep["start_day"] >= now - window)]
-            ratios = list((rr["start_day"] - rr["sent_day"]) / rr["agency"].map(st["out_leg_base"]).clip(lower=0.1))
-        if not ratios:
-            out[c] = 0
-            continue
-        stretch = float(np.median(ratios))
-        out[c] = int(np.argmin([abs(math.log(max(stretch, 1e-3)) - math.log(x)) for x in m["multipliers"]]))
+            base_back, base_out = st.loc[r.agency, "back_leg_base"], st.loc[r.agency, "out_leg_base"]
+            if r.done_day == r.done_day and 0 <= r.done_day <= now:
+                d = int(r.done_day)
+                arr = rec_by_serial.get(r.serial)
+                after = arr[arr >= r.done_day - 1e-6] if arr is not None else []
+                if len(after):                                # observed leg: the multiplier itself
+                    ratio = (after[0] - r.done_day) / max(base_back, 0.1)
+                    loglik[d] += np.where(np.abs(np.log(max(ratio, 1e-3)) - np.log(mult)) < tol, 0.0, np.log(eps))
+                else:                                         # still travelling: leg longer than elapsed
+                    ratio = (now - r.done_day) / max(base_back, 0.1)
+                    loglik[d] += np.where(mult >= ratio * (1 - tol), 0.0, np.log(eps))
+            if r.sent_day == r.sent_day and 0 <= r.sent_day <= now:
+                d = int(r.sent_day)
+                if r.start_day == r.start_day:               # leg + queueing: an upper bound
+                    ratio = (r.start_day - r.sent_day) / max(base_out, 0.1)
+                    loglik[d] += np.where(mult <= ratio * (1 + tol), 0.0, np.log(eps))
+                else:                                         # not started yet: on the way this long, or
+                    ratio = (now - r.sent_day) / max(base_out, 0.1)   # queueing at the agency (soft evidence)
+                    loglik[d] += np.where(mult >= ratio * (1 - tol), 0.0, np.log(queue_p))
+        # stationary start, then predict-update day by day
+        w, v = np.linalg.eig(T.T)
+        pi = np.real(v[:, np.argmin(np.abs(w - 1))])
+        p = np.abs(pi) / np.abs(pi).sum()
+        for d in range(days):
+            if d:
+                p = p @ T
+            p = p * np.exp(loglik[d] - loglik[d].max())
+            p = p / p.sum()
+        out[c] = [round(float(x), 4) for x in p]
     return out
 
 
@@ -230,8 +259,11 @@ def estimate(store: Store, model: TierCModel | None = None, rogue_p: float = 0.5
         initial_install={}, initial_tso_fh={}, initial_stock={},
         rogue_serials=set(model.rogue_flags), serial_names={i: s for s, i in id_of.items()})
 
-    start = _state(world, model, fr, id_of, stats, risk, now, notes)
-    start["regimes"] = current_regimes(rep, fr["receipts"], stats, risk, now)
+    probs = regime_filter(rep, fr["receipts"], stats, risk, now)
+    regimes_now = {c: int(np.argmax(p)) for c, p in probs.items()}
+    start = _state(world, model, fr, id_of, stats, risk, regimes_now, now, notes)
+    start["regimes"] = regimes_now
+    start["regime_probs"] = {c: p for c, p in probs.items() if len(p) > 1}
     return Estimated(world, start, model, {i: s for s, i in id_of.items()}, id_of, now, notes, stats,
                      ids, frailty, signals, dq)
 
@@ -260,7 +292,7 @@ def _frailty_posterior(model: TierCModel, spells: pd.DataFrame, family_of: dict)
 
 
 def _state(world: World, model: TierCModel, fr: dict, id_of: dict, stats: pd.DataFrame, risk: dict,
-           now: float, notes: list[str]) -> dict:
+           regimes_now: dict, now: float, notes: list[str]) -> dict:
     n = len(world.serials)
     sp, rep, onhand = fr["spells"], fr["repairs"], fr["onhand"]
     V, X = np.zeros(n), np.zeros(n)
@@ -304,7 +336,8 @@ def _state(world: World, model: TierCModel, fr: dict, id_of: dict, stats: pd.Dat
             X[sid] = float(r["exit_fh"]) if r["exit_fh"] == r["exit_fh"] else 0.0
 
     # repair pipeline
-    mult_now = {c: m["multipliers"][0] for c, m in risk.items()}
+    # units in transit: today's estimated supply regime stretches their legs; one overdue is due soon
+    mult_now = {c: m["multipliers"][regimes_now.get(c, 0)] for c, m in risk.items()}
     pipeline = []
     in_stock = {sid for v in stock.values() for sid in v}
     fitted = {sid for v in installed.values() for sid in v.values()}
@@ -323,7 +356,7 @@ def _state(world: World, model: TierCModel, fr: dict, id_of: dict, stats: pd.Dat
                              "dt": _lognormal_remaining(med, a["tat_sigma"], now - r.start_day)})
         else:                                             # on its way to the agency, or queued there
             leg = a["out_leg_base"] * mult_now.get(a["country"], 1.0)
-            pipeline.append({"type": "job", **job, "dt": max(0.0, leg - (now - r.sent_day))})
+            pipeline.append({"type": "job", **job, "dt": max(0.1 * leg, leg - (now - r.sent_day))})
     for r in done.itertuples():                           # repaired, not yet received back at base
         sid = id_of[r.serial]
         if sid in in_stock or sid in fitted:
@@ -337,7 +370,7 @@ def _state(world: World, model: TierCModel, fr: dict, id_of: dict, stats: pd.Dat
         a = st.loc[r.agency]
         leg = a["back_leg_base"] * mult_now.get(a["country"], 1.0)
         pipeline.append({"type": "arrive", "base": r.from_base, "sid": sid, "pn": r.pn,
-                         "dt": max(0.0, leg - (now - r.done_day))})
+                         "dt": max(0.1 * leg, leg - (now - r.done_day))})
 
     # aircraft waiting for parts: empty slots, waiting since the last removal from that slot
     waiting = []
