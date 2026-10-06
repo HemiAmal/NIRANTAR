@@ -145,3 +145,47 @@ def test_forgery_and_logout(secure):
 def test_network_listening_needs_logins_and_https():
     with pytest.raises(SystemExit, match="refusing"):
         serve(host="0.0.0.0", port=0)
+
+
+def test_backup_verify_and_restore(tmp_path, world, history):
+    from nirantar import backup as B
+    from nirantar.chitragupta.ledger import Signer
+    from nirantar.setu.export import export
+    from nirantar.setu.ingest import Importer
+    from nirantar.setu.schema import Store
+    res = tmp_path / "res"
+    led = Ledger(res / "ledger.jsonl")
+    sig = Signer.generate("node")
+    for i in range(5):
+        led.append("note", {"i": i}, sig)
+    (res / "live").mkdir()
+    (res / "live" / "clock.json").write_text("{}")
+    export(world, history.records, history.snapshot, 400, tmp_path / "x")
+    Importer(Store(tmp_path / "s.db")).import_folder(tmp_path / "x")
+    UserStore(tmp_path / "u.db").create_user("a", PW, ["Viewer"])
+    out = B.backup(res, tmp_path / "bk", {"store": tmp_path / "s.db", "users": tmp_path / "u.db"}, signer=sig)
+    v = B.verify(out)
+    assert v["ok"] and v["ledger_verified"] and v["signature"]["valid"] and not v["contains_private_keys"]
+    # tampering with any file is caught
+    p = out / "results/live/clock.json"
+    p.write_text('{"day": 99}')
+    assert not B.verify(out)["ok"]
+    p.write_text("{}")
+    with pytest.raises(FileExistsError):                   # never overwrite silently
+        B.restore(out, res, {"store": tmp_path / "s.db"})
+    w = B.restore(out, tmp_path / "res2", {"store": tmp_path / "s2.db", "users": tmp_path / "u2.db"})
+    assert len(w) == 4
+    assert Store(tmp_path / "s2.db").counts() == Store(tmp_path / "s.db").counts()
+    assert UserStore(tmp_path / "u2.db").login("a", PW)[1].username == "a"
+    assert Ledger(tmp_path / "res2/ledger.jsonl").verify_all() == []
+
+
+def test_state_is_json_not_pickle():
+    import numpy as np
+    from nirantar import persist
+    st = {"V": np.arange(3.0), "installed": {"T1": {("PN", 0): 5}}, "stock": {("B1", "PN"): [1, 2]},
+          "hist": {3: [("BRD-1", 10.0, "R")]}, "flags": {1, 2}}
+    back = persist.loads(persist.dumps(st))
+    assert back["installed"]["T1"][("PN", 0)] == 5 and back["stock"][("B1", "PN")] == [1, 2]
+    assert back["hist"][3] == [("BRD-1", 10.0, "R")] and back["flags"] == {1, 2}
+    assert np.array_equal(back["V"], st["V"]) and back["V"].dtype == st["V"].dtype

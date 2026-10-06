@@ -173,7 +173,7 @@ class Console:
         ctx = self.sim_context()
         with self._lock:
             if self._clock is None:
-                self._clock = OperationsClock(ctx["world"], P0, ctx["start"], self.state_dir / "live" / "clock.pkl")
+                self._clock = OperationsClock(ctx["world"], P0, ctx["start"], self.state_dir / "live" / "clock.json")
             return self._clock
 
     def clock_view(self) -> dict:
@@ -254,6 +254,8 @@ class Console:
     # -- ledger ----------------------------------------------------------
     def ledger_view(self, limit: int = 200) -> dict:
         sth = self.report["ledger"]["tree_head"]
+        with self._lock:
+            self.ledger.refresh()                     # entries other processes added (imports, refits)
         bad = self.ledger.verify_all(sth)
         rows = [{"seq": e["seq"], "ts": e["ts"], "kind": e["kind"], "actor": e["actor"],
                  "hash": e["entry_hash"][:16], "payload": e["payload"]} for e in self.ledger.entries[-limit:]]
