@@ -86,6 +86,11 @@ def main() -> None:
     at.add_argument("audio", help="folder of NAME.wav (16-bit mono) and NAME.txt (what was said)")
     at.add_argument("--asr-model", required=True, metavar="LANG=FOLDER")
     at.add_argument("--out", default="experiments/results")
+    sb = sub.add_parser("scale-bench", help="time every stage on a larger synthetic fleet (S, M, L, XL)")
+    sb.add_argument("--size", default="M", choices=["S", "M", "L", "XL"])
+    sb.add_argument("--no-plan", action="store_true")
+    sb.add_argument("--workers", type=int, default=None)
+    sb.add_argument("--out", default="experiments/results")
     ev = sub.add_parser("saarthi-eval", help="score the SAARTHI snag extractor on synthetic utterances")
     ev.add_argument("--n", type=int, default=900)
     ev.add_argument("--seed", type=int, default=0)
@@ -237,6 +242,17 @@ def main() -> None:
         (Path(args.out) / "asr_trial.json").write_text(json.dumps(r, indent=1), encoding="utf-8")
         print(f"{r['files']} recordings: word error rate {r['free']['wer']} free, {r['restricted']['wer']} "
               f"within SAARTHI's vocabulary")
+        return
+    if args.cmd == "scale-bench":
+        import json
+        from pathlib import Path
+
+        from nirantar.scale_bench import run as bench
+        r = bench(args.size, plan=not args.no_plan, workers=args.workers)
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        f = Path(args.out) / f"scale_bench_{args.size}.json"
+        f.write_text(json.dumps(r, indent=1), encoding="utf-8")
+        print(json.dumps(r, indent=1))
         return
     if args.cmd == "saarthi-eval":
         import json
