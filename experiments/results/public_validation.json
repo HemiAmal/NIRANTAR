@@ -1,0 +1,565 @@
+{
+ "fans": {
+  "units": 70,
+  "failures": 12,
+  "independent_mle": {
+   "beta": 1.0584,
+   "eta_hours": 26297.0
+  },
+  "tier_c": {
+   "beta": 1.1509,
+   "eta_hours": 22611.0,
+   "frailty_k": 3.77
+  },
+  "failure_probability_by_hours": {
+   "2000": {
+    "independent_mle": 0.0633,
+    "tier_c": 0.059
+   },
+   "5000": {
+    "independent_mle": 0.1585,
+    "tier_c": 0.1581
+   },
+   "10000": {
+    "independent_mle": 0.3019,
+    "tier_c": 0.3107
+   },
+   "20000": {
+    "independent_mle": 0.5269,
+    "tier_c": 0.5422
+   },
+   "30000": {
+    "independent_mle": 0.6832,
+    "tier_c": 0.6925
+   }
+  },
+  "max_abs_difference": 0.0153
+ },
+ "braking_grids": {
+  "batches": {
+   "GRID-BATCH1": {
+    "grids": 39,
+    "replacements": 24,
+    "locomotives": 15,
+    "eta_days": 415.0,
+    "replacements_per_1000_days": 2.25
+   },
+   "GRID-BATCH2": {
+    "grids": 44,
+    "replacements": 26,
+    "locomotives": 18,
+    "eta_days": 295.0,
+    "replacements_per_1000_days": 3.2
+   }
+  },
+  "beta": 1.281,
+  "batch2_life_vs_batch1_90ci": [
+   0.487,
+   0.711,
+   1.04
+  ],
+  "batch2_shorter_with_90pct_confidence": false
+ },
+ "valve_seats": {
+  "engines": 41,
+  "replacements": 48,
+  "fits": {
+   "300.0": {
+    "beta": 1.404,
+    "eta_days": 505.4,
+    "shop_q": 0.471,
+    "frailty_k": 3.97
+   },
+   "400.0": {
+    "beta": 1.348,
+    "eta_days": 528.0,
+    "shop_q": 0.465,
+    "frailty_k": 4.12
+   },
+   "500.0": {
+    "beta": 1.228,
+    "eta_days": 575.6,
+    "shop_q": 0.446,
+    "frailty_k": 3.69
+   }
+  },
+  "by_cutoff": {
+   "300": {
+    "engines": 41,
+    "observed": 29,
+    "tier_c_unit": {
+     "predicted": 31.4,
+     "deviance": 55.7,
+     "mae": 0.815
+    },
+    "tier_c_population": {
+     "predicted": 31.5,
+     "deviance": 56.67,
+     "mae": 0.827
+    },
+    "constant_rate": {
+     "predicted": 20.2,
+     "deviance": 58.77,
+     "mae": 0.78
+    },
+    "own_rate": {
+     "predicted": 19.2,
+     "deviance": 674.42,
+     "mae": 0.752
+    }
+   },
+   "400": {
+    "engines": 40,
+    "observed": 21,
+    "tier_c_unit": {
+     "predicted": 20.5,
+     "deviance": 39.97,
+     "mae": 0.603
+    },
+    "tier_c_population": {
+     "predicted": 20.8,
+     "deviance": 42.45,
+     "mae": 0.636
+    },
+    "constant_rate": {
+     "predicted": 14.8,
+     "deviance": 43.79,
+     "mae": 0.6
+    },
+    "own_rate": {
+     "predicted": 13.8,
+     "deviance": 220.91,
+     "mae": 0.494
+    }
+   },
+   "500": {
+    "engines": 40,
+    "observed": 15,
+    "tier_c_unit": {
+     "predicted": 9.9,
+     "deviance": 35.98,
+     "mae": 0.443
+    },
+    "tier_c_population": {
+     "predicted": 10.0,
+     "deviance": 37.66,
+     "mae": 0.46
+    },
+    "constant_rate": {
+     "predicted": 8.1,
+     "deviance": 39.72,
+     "mae": 0.441
+    },
+    "own_rate": {
+     "predicted": 7.5,
+     "deviance": 141.18,
+     "mae": 0.351
+    }
+   }
+  },
+  "total": {
+   "tier_c_unit": {
+    "deviance": 131.64,
+    "mae": 0.622
+   },
+   "tier_c_population": {
+    "deviance": 136.78,
+    "mae": 0.642
+   },
+   "constant_rate": {
+    "deviance": 142.28,
+    "mae": 0.608
+   },
+   "own_rate": {
+    "deviance": 1036.5,
+    "mae": 0.534
+   }
+  }
+ },
+ "drives": {
+  "drives": 52422,
+  "models": 85,
+  "failures": 2885,
+  "train_share": 0.5,
+  "training_sample": 1.0,
+  "runs": [
+   {
+    "seed": 0,
+    "fit_seconds": 4.5,
+    "train_drives": 26182,
+    "sparse_models_test_drives": 1200,
+    "sparse_models_test_failures": 48,
+    "tier_c": {
+     "loglik_per_1000": -514.48,
+     "loglik_per_1000_sparse": -417.42,
+     "deviance_by_model": 169.9,
+     "deviance_by_model_sparse": 80.6,
+     "expected_vs_observed": [
+      1468.3,
+      1412
+     ]
+    },
+    "tier_c_part_shape": {
+     "loglik_per_1000": -502.18,
+     "loglik_per_1000_sparse": -414.62,
+     "deviance_by_model": 126.1,
+     "deviance_by_model_sparse": 86.1,
+     "expected_vs_observed": [
+      1436.9,
+      1412
+     ]
+    },
+    "complete_pooling": {
+     "loglik_per_1000": -557.94,
+     "loglik_per_1000_sparse": -430.12,
+     "deviance_by_model": 2113.1,
+     "deviance_by_model_sparse": 121.2,
+     "expected_vs_observed": [
+      1476.3,
+      1412
+     ]
+    },
+    "no_pooling": {
+     "loglik_per_1000": -503.65,
+     "loglik_per_1000_sparse": -423.05,
+     "deviance_by_model": 165.4,
+     "deviance_by_model_sparse": 119.0,
+     "expected_vs_observed": [
+      1466.8,
+      1412
+     ]
+    }
+   },
+   {
+    "seed": 1,
+    "fit_seconds": 4.6,
+    "train_drives": 26212,
+    "sparse_models_test_drives": 1439,
+    "sparse_models_test_failures": 55,
+    "tier_c": {
+     "loglik_per_1000": -531.31,
+     "loglik_per_1000_sparse": -404.38,
+     "deviance_by_model": 129.1,
+     "deviance_by_model_sparse": 108.1,
+     "expected_vs_observed": [
+      1417.2,
+      1470
+     ]
+    },
+    "tier_c_part_shape": {
+     "loglik_per_1000": -520.35,
+     "loglik_per_1000_sparse": -403.43,
+     "deviance_by_model": 142.3,
+     "deviance_by_model_sparse": 121.2,
+     "expected_vs_observed": [
+      1410.6,
+      1470
+     ]
+    },
+    "complete_pooling": {
+     "loglik_per_1000": -579.23,
+     "loglik_per_1000_sparse": -409.87,
+     "deviance_by_model": 2243.2,
+     "deviance_by_model_sparse": 150.7,
+     "expected_vs_observed": [
+      1406.0,
+      1470
+     ]
+    },
+    "no_pooling": {
+     "loglik_per_1000": -521.94,
+     "loglik_per_1000_sparse": -411.69,
+     "deviance_by_model": 123.0,
+     "deviance_by_model_sparse": 100.8,
+     "expected_vs_observed": [
+      1433.1,
+      1470
+     ]
+    }
+   },
+   {
+    "seed": 2,
+    "fit_seconds": 4.8,
+    "train_drives": 26168,
+    "sparse_models_test_drives": 1214,
+    "sparse_models_test_failures": 53,
+    "tier_c": {
+     "loglik_per_1000": -524.39,
+     "loglik_per_1000_sparse": -469.85,
+     "deviance_by_model": 160.6,
+     "deviance_by_model_sparse": 132.5,
+     "expected_vs_observed": [
+      1405.4,
+      1451
+     ]
+    },
+    "tier_c_part_shape": {
+     "loglik_per_1000": -512.26,
+     "loglik_per_1000_sparse": -455.16,
+     "deviance_by_model": 156.6,
+     "deviance_by_model_sparse": 123.8,
+     "expected_vs_observed": [
+      1372.9,
+      1451
+     ]
+    },
+    "complete_pooling": {
+     "loglik_per_1000": -571.89,
+     "loglik_per_1000_sparse": -467.07,
+     "deviance_by_model": 2276.0,
+     "deviance_by_model_sparse": 167.4,
+     "expected_vs_observed": [
+      1430.8,
+      1451
+     ]
+    },
+    "no_pooling": {
+     "loglik_per_1000": -514.53,
+     "loglik_per_1000_sparse": -472.92,
+     "deviance_by_model": 156.0,
+     "deviance_by_model_sparse": 118.1,
+     "expected_vs_observed": [
+      1384.8,
+      1451
+     ]
+    }
+   }
+  ],
+  "temperature_effect": {
+   "HGST 25-30C": 1.33,
+   "HGST 30C and above": 1.15,
+   "HGST below 25C": 0.65,
+   "Hitachi 25-30C": 0.88,
+   "Hitachi 30C and above": 1.46,
+   "Hitachi below 25C": 0.76,
+   "SAMSUNG below 25C": 1.03,
+   "Seagate 25-30C": 1.06,
+   "Seagate 30C and above": 1.06,
+   "Seagate below 25C": 0.92,
+   "TOSHIBA 25-30C": 0.98,
+   "TOSHIBA 30C and above": 1.03,
+   "WDC 25-30C": 0.99,
+   "WDC 30C and above": 1.25,
+   "WDC below 25C": 0.79
+  },
+  "mean": {
+   "tier_c": {
+    "loglik_per_1000": -523.39,
+    "loglik_per_1000_sparse": -430.55,
+    "deviance_by_model": 153.2,
+    "deviance_by_model_sparse": 107.07
+   },
+   "tier_c_part_shape": {
+    "loglik_per_1000": -511.6,
+    "loglik_per_1000_sparse": -424.4,
+    "deviance_by_model": 141.67,
+    "deviance_by_model_sparse": 110.37
+   },
+   "complete_pooling": {
+    "loglik_per_1000": -569.69,
+    "loglik_per_1000_sparse": -435.69,
+    "deviance_by_model": 2210.77,
+    "deviance_by_model_sparse": 146.43
+   },
+   "no_pooling": {
+    "loglik_per_1000": -513.37,
+    "loglik_per_1000_sparse": -435.89,
+    "deviance_by_model": 148.13,
+    "deviance_by_model_sparse": 112.63
+   }
+  }
+ },
+ "drives_sparse_10pct": {
+  "drives": 52422,
+  "models": 85,
+  "failures": 2885,
+  "train_share": 0.5,
+  "training_sample": 0.1,
+  "runs": [
+   {
+    "seed": 0,
+    "fit_seconds": 0.5,
+    "train_drives": 2619,
+    "sparse_models_test_drives": 14717,
+    "sparse_models_test_failures": 274,
+    "tier_c": {
+     "loglik_per_1000": -520.31,
+     "loglik_per_1000_sparse": -218.87,
+     "deviance_by_model": 395.5,
+     "deviance_by_model_sparse": 326.5,
+     "expected_vs_observed": [
+      1634.7,
+      1412
+     ]
+    },
+    "tier_c_part_shape": {
+     "loglik_per_1000": -511.45,
+     "loglik_per_1000_sparse": -218.84,
+     "deviance_by_model": 420.4,
+     "deviance_by_model_sparse": 345.1,
+     "expected_vs_observed": [
+      1649.4,
+      1412
+     ]
+    },
+    "complete_pooling": {
+     "loglik_per_1000": -558.43,
+     "loglik_per_1000_sparse": -242.87,
+     "deviance_by_model": 2252.4,
+     "deviance_by_model_sparse": 1067.4,
+     "expected_vs_observed": [
+      1566.3,
+      1412
+     ]
+    },
+    "no_pooling": {
+     "loglik_per_1000": -511.56,
+     "loglik_per_1000_sparse": -217.25,
+     "deviance_by_model": 388.2,
+     "deviance_by_model_sparse": 321.5,
+     "expected_vs_observed": [
+      1728.4,
+      1412
+     ]
+    }
+   },
+   {
+    "seed": 1,
+    "fit_seconds": 0.4,
+    "train_drives": 2612,
+    "sparse_models_test_drives": 10099,
+    "sparse_models_test_failures": 278,
+    "tier_c": {
+     "loglik_per_1000": -539.93,
+     "loglik_per_1000_sparse": -293.27,
+     "deviance_by_model": 443.7,
+     "deviance_by_model_sparse": 369.5,
+     "expected_vs_observed": [
+      1509.5,
+      1470
+     ]
+    },
+    "tier_c_part_shape": {
+     "loglik_per_1000": -529.93,
+     "loglik_per_1000_sparse": -295.13,
+     "deviance_by_model": 474.4,
+     "deviance_by_model_sparse": 377.2,
+     "expected_vs_observed": [
+      1508.5,
+      1470
+     ]
+    },
+    "complete_pooling": {
+     "loglik_per_1000": -579.88,
+     "loglik_per_1000_sparse": -299.48,
+     "deviance_by_model": 2178.2,
+     "deviance_by_model_sparse": 525.8,
+     "expected_vs_observed": [
+      1363.8,
+      1470
+     ]
+    },
+    "no_pooling": {
+     "loglik_per_1000": -531.31,
+     "loglik_per_1000_sparse": -290.41,
+     "deviance_by_model": 426.3,
+     "deviance_by_model_sparse": 327.7,
+     "expected_vs_observed": [
+      1654.7,
+      1470
+     ]
+    }
+   },
+   {
+    "seed": 2,
+    "fit_seconds": 0.4,
+    "train_drives": 2611,
+    "sparse_models_test_drives": 14195,
+    "sparse_models_test_failures": 308,
+    "tier_c": {
+     "loglik_per_1000": -529.13,
+     "loglik_per_1000_sparse": -237.15,
+     "deviance_by_model": 284.5,
+     "deviance_by_model_sparse": 236.3,
+     "expected_vs_observed": [
+      1397.4,
+      1451
+     ]
+    },
+    "tier_c_part_shape": {
+     "loglik_per_1000": -517.81,
+     "loglik_per_1000_sparse": -237.55,
+     "deviance_by_model": 310.7,
+     "deviance_by_model_sparse": 239.2,
+     "expected_vs_observed": [
+      1401.1,
+      1451
+     ]
+    },
+    "complete_pooling": {
+     "loglik_per_1000": -572.84,
+     "loglik_per_1000_sparse": -268.4,
+     "deviance_by_model": 2165.5,
+     "deviance_by_model_sparse": 1116.5,
+     "expected_vs_observed": [
+      1503.8,
+      1451
+     ]
+    },
+    "no_pooling": {
+     "loglik_per_1000": -525.36,
+     "loglik_per_1000_sparse": -250.81,
+     "deviance_by_model": 587.6,
+     "deviance_by_model_sparse": 507.1,
+     "expected_vs_observed": [
+      1651.4,
+      1451
+     ]
+    }
+   }
+  ],
+  "temperature_effect": {
+   "HGST 25-30C": 1.32,
+   "HGST 30C and above": 1.03,
+   "HGST below 25C": 0.74,
+   "Hitachi 25-30C": 1.12,
+   "Hitachi 30C and above": 1.05,
+   "Hitachi below 25C": 0.86,
+   "SAMSUNG below 25C": 1.0,
+   "Seagate 25-30C": 1.01,
+   "Seagate 30C and above": 0.99,
+   "Seagate below 25C": 0.99,
+   "TOSHIBA 25-30C": 0.98,
+   "TOSHIBA 30C and above": 1.02,
+   "WDC 25-30C": 0.79,
+   "WDC 30C and above": 1.18,
+   "WDC below 25C": 1.07
+  },
+  "mean": {
+   "tier_c": {
+    "loglik_per_1000": -529.79,
+    "loglik_per_1000_sparse": -249.76,
+    "deviance_by_model": 374.57,
+    "deviance_by_model_sparse": 310.77
+   },
+   "tier_c_part_shape": {
+    "loglik_per_1000": -519.73,
+    "loglik_per_1000_sparse": -250.51,
+    "deviance_by_model": 401.83,
+    "deviance_by_model_sparse": 320.5
+   },
+   "complete_pooling": {
+    "loglik_per_1000": -570.38,
+    "loglik_per_1000_sparse": -270.25,
+    "deviance_by_model": 2198.7,
+    "deviance_by_model_sparse": 903.23
+   },
+   "no_pooling": {
+    "loglik_per_1000": -522.74,
+    "loglik_per_1000_sparse": -252.82,
+    "deviance_by_model": 467.37,
+    "deviance_by_model_sparse": 385.43
+   }
+  }
+ }
+}

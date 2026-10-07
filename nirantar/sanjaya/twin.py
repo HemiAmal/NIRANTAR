@@ -66,14 +66,23 @@ class Policy:
 
 @dataclass(frozen=True)
 class Action:
-    """A sustainment action applied at the start of a run (CHANAKYA catalogue)."""
-    kind: str                          # provision | route | indigenise
+    """A sustainment action applied at the start of a run (CHANAKYA catalogue).
+
+    kinds: provision | route | indigenise | transfer (src base -> base) |
+    expedite (serial in the repair pipeline) | priority (serial to the front of
+    its agency queue) | cann (controlled cannibalisation: pn from donor tail
+    ``src`` to waiting tail ``tail``).
+    """
+    kind: str
     pn: str
     base: Optional[str] = None
     qty: int = 1
     agency: Optional[str] = None
     start_day: float = 0.0             # when the action takes effect / is ordered
     cost_lakh: float = 0.0
+    src: Optional[str] = None          # transfer: source base; cann: donor tail
+    serial: Optional[int] = None       # expedite / priority
+    tail: Optional[str] = None         # cann: receiving tail
 
     def label(self) -> str:
         if self.kind == "provision":
@@ -82,6 +91,14 @@ class Action:
             return f"ROUTE {self.pn} -> {self.agency} (day {self.start_day:g})"
         if self.kind == "indigenise":
             return f"INDIGENISE {self.pn} via {self.agency} (qualified day {self.start_day:g})"
+        if self.kind == "transfer":
+            return f"TRANSFER {self.qty}x {self.pn} {self.src} -> {self.base} (day {self.start_day:g})"
+        if self.kind == "expedite":
+            return f"EXPEDITE S/N {self.serial} ({self.pn}) for {self.base} (day {self.start_day:g})"
+        if self.kind == "priority":
+            return f"REPAIR-PRIORITY S/N {self.serial} ({self.pn}) at {self.agency} (day {self.start_day:g})"
+        if self.kind == "cann":
+            return f"CANN {self.pn} {self.src} -> {self.tail} (day {self.start_day:g})"
         return f"{self.kind} {self.pn}"
 
 
@@ -94,6 +111,9 @@ class Scenario:
 SUPPLY_SHOCK = Scenario("supply_shock", (("RU", "disrupted", 20.0, 200.0),))
 
 OVERHAUL_LIMIT = 1.2        # overhaul once hours since last overhaul exceed 1.2 x eta
+LATERAL_DAYS = 2.0          # base-to-base transfer by road/air
+EXPEDITE_LEG_DAYS = 2.0     # premium freight leg for an expedited unit
+EXPEDITE_TAT_FACTOR = 0.7   # overtime on an expedited repair
 
 INDIGENOUS_AGENCY = Agency("IND-V", "MSME", "IN", 0.35, 20, 0.30, 6, 3)
 
@@ -140,6 +160,7 @@ class Twin:
         start: Optional[dict] = None,
         record: bool = False,
         type_weights: Optional[dict[str, float]] = None,
+        resume: bool = False,
     ):
         if (policy.predictive_swap or policy.smart_routing or policy.rogue_quarantine) and decision_model is None:
             raise ValueError(f"policy {policy.name} needs a decision model")
@@ -149,6 +170,7 @@ class Twin:
         self.seed = seed
         self.scenario = scenario
         self.actions = actions
+        self.resume = resume              # continue exactly: remaining work, waiting times, queue order
         self.dm = decision_model
         self.record = record
         self.type_weights = type_weights or {f: ft.role_weight for f, ft in world.fleets.items()}
@@ -162,13 +184,17 @@ class Twin:
         self._events: list = []
         self._seq = 0
         self.t = 0.0
-        self._init_regimes((start or {}).get("regimes", {}))
+        self.expedited: set[int] = {a.serial for a in actions if a.kind == "expedite" and a.start_day <= 0}
+        self.priority: set[int] = {a.serial for a in actions if a.kind == "priority" and a.start_day <= 0}
+        self._init_regimes((start or {}).get("regimes", {}), (start or {}).get("regime_probs"))
         self._init_state(start)
         self._apply_actions()
 
     # ------------------------------------------------------------ setup
 
-    def _init_regimes(self, initial: dict[str, int] | None = None) -> None:
+    def _init_regimes(self, initial: dict[str, int] | None = None, probs: dict | None = None) -> None:
+        """Daily regime paths. ``probs`` (country -> probability of each regime today, when today's
+        regime is only estimated) draws each future's starting regime from that belief."""
         n_days = int(self.H) + 2
         self.regime_state: dict[str, np.ndarray] = {}
         for c, m in self.w.regimes.items():
@@ -177,6 +203,8 @@ class Twin:
             if len(m.states) > 1:
                 g = krng(self.seed, "regime", c)
                 u = g.random(n_days)
+                if probs and c in probs:                     # u[0] is otherwise unused
+                    states[0] = min(int(np.searchsorted(np.cumsum(probs[c]), u[0])), len(m.states) - 1)
                 P = np.cumsum(np.array(m.transition), axis=1)
                 for d in range(1, n_days):
                     states[d] = int(np.searchsorted(P[states[d - 1]], u[d]))
@@ -229,6 +257,7 @@ class Twin:
         self.spells: list[dict] = []
         self.repairs: list[dict] = []
         self.snags: list[dict] = []
+        self.receipts: list[dict] = []
 
         if start is None:
             for (tail_id, pn, k), sid in w.initial_install.items():
@@ -241,6 +270,12 @@ class Twin:
                 tail["since_insp"] = float(krng(self.seed, "insp0", tail["idx"]).uniform(0, tail["ft"].inspection_interval_fh))
         else:
             self._load_snapshot(start)
+        waited: dict[tuple[str, tuple], float] = {}
+        if start is not None and self.resume:
+            for w in start.get("waiting", []):
+                waited[(w["tail"], (w["pn"], int(w["pos"]) - 1))] = float(w["days"])
+            for tail in self.tails:
+                tail["work_until"] = float(start.get("work_left", {}).get(tail["id"], 0.0))
 
         for tail in self.tails:
             for slot, sid in tail["inst"].items():
@@ -248,21 +283,28 @@ class Twin:
                 tail["rem"][slot] = self._sample_life(tail, sid, slot)
             for slot in tail["slots"]:
                 if slot not in tail["inst"]:
-                    self.backorders[(tail["base"], slot[0])].append((tail["idx"], slot, 0.0))
+                    t0 = -waited.get((tail["id"], slot), 0.0)
+                    self.backorders[(tail["base"], slot[0])].append((tail["idx"], slot, t0))
             self._refresh(tail)
+        if waited:                                    # first come, first served across the step boundary
+            for key, q in self.backorders.items():
+                self.backorders[key] = deque(sorted(q, key=lambda b: b[2]))
 
         if start is not None:
             for item in start["pipeline"]:
                 item = dict(item)
                 kind, dt = item.pop("type"), item.pop("dt", 0.0)
+                fast = item.get("sid") in self.expedited
                 if kind == "arrive":
-                    self._push(dt, "ARRIVE", (item["base"], item["sid"]))
+                    leg = self._express_days(self._last_agency(item["sid"]))
+                    self._push(min(dt, leg) if fast else dt, "ARRIVE", (item["base"], item["sid"]))
                 elif kind == "inrepair":
                     item["start"] = 0.0
                     self.busy[item["agency"]] += 1
-                    self._push(dt, "REPAIR_DONE", item)
+                    self._push(dt * EXPEDITE_TAT_FACTOR if fast else dt, "REPAIR_DONE", item)
                 else:
-                    self._push(dt, "AG_ARRIVE", item)
+                    leg = self._express_days(item["agency"])
+                    self._push(min(dt, leg) if fast else dt, "AG_ARRIVE", item)
             for key in list(self.backorders):
                 self._try_fill(key[0], key[1])
 
@@ -279,6 +321,14 @@ class Twin:
         return g + "#OH" if kind == "OH" else g
 
     def _load_snapshot(self, s: dict) -> None:
+        extra = len(s["V"]) - len(self.V)
+        if extra > 0:                                  # units bought in an earlier run
+            self.V = np.zeros(len(s["V"]))
+            self.X = np.zeros(len(s["V"]))
+            self.z = np.ones(len(s["V"]))
+            self.install_count = np.append(self.install_count, np.zeros(extra, dtype=int))
+            self.repair_count = np.append(self.repair_count, np.zeros(extra, dtype=int))
+            self.new_pn = {int(k): v for k, v in s.get("new_pn", {}).items()}
         self.V[:] = s["V"]
         self.X[:] = s["X"]
         self.z[:] = s["z"]
@@ -306,6 +356,16 @@ class Twin:
                 self._push(a.start_day, "ROUTE", (a.pn, a.agency))
             elif a.kind == "indigenise":
                 self._push(a.start_day, "INDIGENISE", (a.pn, a.agency or INDIGENOUS_AGENCY.id))
+                self.spend += a.cost_lakh
+            elif a.kind == "transfer":
+                self._push(a.start_day, "TRANSFER", (a.src, a.base, a.pn, a.qty))
+                self.spend += a.cost_lakh
+            elif a.kind in ("expedite", "priority"):
+                if a.start_day > 0:
+                    self._push(a.start_day, "FLAG", (a.kind, a.serial))
+                self.spend += a.cost_lakh
+            elif a.kind == "cann":
+                self._push(a.start_day, "CANN", (a.pn, a.src, a.tail))
                 self.spend += a.cost_lakh
             else:
                 raise ValueError(a.kind)
@@ -420,7 +480,7 @@ class Twin:
                 "serial": sid, "pn": self.pn_of(sid), "tail": tail["id"], "fleet": tail["fleet"],
                 "base": tail["base"], "env": tail["env"], "install_day": self.t,
                 "entry_fh": float(self.X[sid]), "prev_agency": prev_agency,
-                "n_prior_repairs": len(self.hist.get(sid, [])),
+                "n_prior_repairs": len(self.hist.get(sid, [])), "position": int(slot[1]) + 1,
             }
 
     def _end_spell(self, tail: dict, slot, sid: int, reason: Optional[str]) -> None:
@@ -533,8 +593,48 @@ class Twin:
                     need -= 1
                     self._push(self.t + 2.0, "ARRIVE", (base, sid, "lateral"))
 
+    def _on_TRANSFER(self, payload) -> None:
+        src, dst, pn, qty = payload
+        for _ in range(qty):
+            if not self.stock[(src, pn)]:
+                break                                   # nothing left to send (used meanwhile)
+            self._push(self.t + LATERAL_DAYS, "ARRIVE", (dst, self.stock[(src, pn)].pop(0), "transfer"))
+
+    def _on_FLAG(self, payload) -> None:
+        kind, sid = payload
+        (self.expedited if kind == "expedite" else self.priority).add(sid)
+
+    def _on_CANN(self, payload) -> None:
+        """Controlled cannibalisation: move a part from a tail that is already down
+        to a tail waiting only for that part. Never takes a part from a flyable tail."""
+        pn, donor_id, recv_id = payload
+        donor, recv = self._tail_by_id(donor_id), self._tail_by_id(recv_id)
+        if donor["base"] != recv["base"] or self._is_mc(donor):
+            return
+        key = (recv["base"], pn)
+        waiting = [b for b in self.backorders[key] if b[0] == recv["idx"]]
+        dslots = [s for s in donor["inst"] if s[0] == pn]
+        if not waiting or not dslots:
+            return
+        self._age(donor, self.t)
+        self._age(recv, self.t)
+        self.backorders[key].remove(waiting[0])
+        dslot = dslots[0]
+        sid = donor["inst"].pop(dslot)
+        donor["rem"].pop(dslot, None)
+        self._end_spell(donor, dslot, sid, "cannibalised")
+        self.backorders[key].append((donor["idx"], dslot, self.t))
+        self._install(recv, waiting[0][1], sid, 2 * recv["ft"].mttr_swap_days)
+        self._refresh(donor)
+        self._refresh(recv)
+
     def _on_ARRIVE(self, payload) -> None:
         base, sid = payload[0], payload[1]
+        if self.record:
+            src = payload[2] if len(payload) > 2 else ("repair" if self.hist.get(sid) else "new")
+            self.receipts.append({"day": self.t, "base": base, "serial": sid, "pn": self.pn_of(sid), "source": src})
+        self.expedited.discard(sid)
+        self.priority.discard(sid)
         pn = self.pn_of(sid)
         if len(payload) > 2 and payload[2] == "lateral":
             self._lateral_pending[(base, pn)] -= 1
@@ -593,7 +693,20 @@ class Twin:
         overhaul = (not deep) and self.X[sid] + self._recorded_virtual_age(sid) >= OVERHAUL_LIMIT * self.w.pns[pn].eta
         job = {"sid": sid, "pn": pn, "agency": g, "from": from_base, "sent": self.t,
                "deep": deep, "overhaul": bool(overhaul), "id": self._job_seq}
-        self._push(self.t + self.transit_days(g), "AG_ARRIVE", job)
+        self._push(self.t + self._leg(g, sid), "AG_ARRIVE", job)
+
+    def _leg(self, g: str, sid: int) -> float:
+        d = self.transit_days(g)
+        return min(d, self._express_days(g)) if sid in self.expedited else d
+
+    def _express_days(self, g: Optional[str]) -> float:
+        """Air freight is faster, but customs and payment delays of a stressed supplier still apply."""
+        ag = self.agencies.get(g) if g else None
+        return EXPEDITE_LEG_DAYS * (self.regime_multiplier(ag.country, self.t) if ag else 1.0)
+
+    def _last_agency(self, sid: int) -> Optional[str]:
+        h = self.hist.get(sid)
+        return h[-1][0] if h else None
 
     def _on_AG_ARRIVE(self, job: dict) -> None:
         self.queues[job["agency"]].append(job)
@@ -601,6 +714,10 @@ class Twin:
 
     def _pick_job(self, g: str) -> dict:
         q = self.queues[g]
+        if (self.priority or self.expedited) and len(q) > 1:
+            for i, j in enumerate(q):
+                if j["sid"] in self.priority or j["sid"] in self.expedited:
+                    return q.pop(i)
         if self.policy.aog_priority and len(q) > 1:
             def need(j):
                 return sum(len(self.backorders[(b, j["pn"])]) for b in self.w.bases)
@@ -618,6 +735,8 @@ class Twin:
             tat = ag.tat_median_days * float(np.exp(r.normal(0.0, ag.tat_sigma)))
             if job["deep"] or job.get("overhaul"):
                 tat *= 1.5
+            if sid in self.expedited:
+                tat *= EXPEDITE_TAT_FACTOR
             job["start"] = self.t
             self._push(self.t + tat, "REPAIR_DONE", job)
 
@@ -642,7 +761,7 @@ class Twin:
                                  "start_day": job["start"], "done_day": self.t, "deep_strip": job["deep"],
                                  "overhaul": overhaul, "from_base": job["from"], "fh_since_repair": x})
         dest = self._destination(job)
-        self._push(self.t + self.transit_days(g), "ARRIVE", (dest, sid))
+        self._push(self.t + self._leg(g, sid), "ARRIVE", (dest, sid))
         self._start_jobs(g)
 
     def _destination(self, job: dict) -> str:
@@ -696,7 +815,12 @@ class Twin:
             "since_insp": {t["id"]: t["since_insp"] for t in self.tails},
             "stock": {k: list(v) for k, v in self.stock.items() if v},
             "pipeline": pipeline,
+            "new_pn": dict(getattr(self, "new_pn", {})),
             "regimes": {c: int(st[min(int(self.H), len(st) - 1)]) for c, st in self.regime_state.items()},
+            # for planning displays only (not used when continuing a run)
+            "waiting": [{"tail": self.tails[i]["id"], "pn": slot[0], "pos": slot[1] + 1, "days": self.H - t0}
+                        for key, q in self.backorders.items() for i, slot, t0 in q],
+            "work_left": {t["id"]: max(t["work_until"] - self.H, 0.0) for t in self.tails},
         }
 
     def _result(self) -> RunResult:
@@ -731,14 +855,17 @@ class Twin:
                         sp.update({"removal_day": np.nan, "exit_fh": float(self.X[sid]), "removal_reason": None})
                         open_spells.append(sp)
             in_progress = []
+            started = {dict(p)["sid"]: dict(p).get("start", np.nan) for _, _, k, p in self._events if k == "REPAIR_DONE"}
             for item in self.snapshot()["pipeline"]:
                 if item["type"] in ("job", "inrepair"):
                     in_progress.append({"serial": item["sid"], "pn": item["pn"], "agency": item["agency"],
-                                        "sent_day": item["sent"], "start_day": np.nan, "done_day": np.nan,
+                                        "sent_day": item["sent"], "done_day": np.nan,
+                                        "start_day": started.get(item["sid"], np.nan) if item["type"] == "inrepair"
+                                        else np.nan,
                                         "deep_strip": item["deep"], "overhaul": item.get("overhaul", False),
                                         "from_base": item["from"], "fh_since_repair": np.nan})
             records = {"spells": self.spells + open_spells, "repairs": self.repairs + in_progress,
-                       "snags": self.snags}
+                       "snags": self.snags, "receipts": self.receipts}
         return RunResult(
             policy=self.policy.name, scenario=self.scenario.name, seed=self.seed, horizon=H,
             fleet_daily_availability=fleet_avail, mean_availability=mean_av,

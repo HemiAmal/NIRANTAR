@@ -5,3 +5,17 @@ __pycache__/
 build/
 dist/
 .venv/
+
+# signing keys of local console nodes (never commit private keys)
+*.key
+*.pem
+
+*.bundle
+
+# operations-clock state and day plans of a local console
+experiments/results/live/
+experiments/results/records/
+
+# local record stores and generated exports
+data/
+*.db

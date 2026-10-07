@@ -1,0 +1,842 @@
+{
+ "cutoffs": [
+  {
+   "cutoff_day": 1095,
+   "history_seed": 99,
+   "state": {
+    "fitted_units_correct": 1.0,
+    "fitted_slots": 914,
+    "shelf_units_correct": 1.0,
+    "pipeline_units_found": 1.0,
+    "pipeline_stage_correct": 1.0,
+    "pipeline_days_left_mae": 23.2,
+    "waiting_aircraft": [
+     36,
+     36
+    ],
+    "waiting_correct": 1.0,
+    "supply_regime": {
+     "true": {
+      "RU": 2,
+      "FR": 0,
+      "IN": 0
+     },
+     "estimated": {
+      "RU": 1,
+      "FR": 0,
+      "IN": 0
+     }
+    }
+   },
+   "parameters": {
+    "agencies": {
+     "BRD-1": {
+      "tat_true": 32,
+      "tat_est": 32.3,
+      "q_true": 0.25,
+      "q_est": 0.279,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 28,
+      "slots_est": 34
+     },
+     "HAL-K": {
+      "tat_true": 45,
+      "tat_est": 44.8,
+      "q_true": 0.15,
+      "q_est": 0.147,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 26,
+      "slots_est": 33
+     },
+     "MSME-P": {
+      "tat_true": 16,
+      "tat_est": 15.8,
+      "q_true": 0.6,
+      "q_est": 0.438,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 12,
+      "slots_est": 16
+     },
+     "OEM-RU": {
+      "tat_true": 70,
+      "tat_est": 68.3,
+      "q_true": 0.05,
+      "q_est": 0.115,
+      "leg_true": 12,
+      "leg_est": 12.0,
+      "slots_true": 50,
+      "slots_est": 52
+     },
+     "OEM-FR": {
+      "tat_true": 60,
+      "tat_est": 63.3,
+      "q_true": 0.05,
+      "q_est": 0.207,
+      "leg_true": 10,
+      "leg_est": 10.0,
+      "slots_true": 30,
+      "slots_est": 18
+     }
+    },
+    "eta_median_rel_error": 0.144,
+    "beta_median_rel_error": 0.045
+   },
+   "notes": [
+    "Inspections are not recorded yet: each aircraft's inspection timing is spread evenly over its interval.",
+    "Purchase orders in flight are not recorded yet: none are assumed."
+   ],
+   "forecast": {
+    "horizon_days": 90,
+    "availability_true": 0.5111,
+    "availability_estimated": 0.5343,
+    "error_points": 2.32
+   },
+   "decisions": {
+    "records_plan": {
+     "actions": 21,
+     "cost_lakh": 36.9,
+     "claimed_wAAD": 293.1,
+     "claimed_ci95": [
+      270.7,
+      315.4
+     ],
+     "realised_wAAD": 303.3,
+     "realised_ci95": [
+      275.6,
+      330.9
+     ],
+     "kinds": {
+      "route": 1,
+      "transfer": 5,
+      "expedite": 7,
+      "provision": 3,
+      "cann": 5
+     }
+    },
+    "oracle_plan": {
+     "actions": 25,
+     "cost_lakh": 42.05,
+     "claimed_wAAD": 350.4,
+     "realised_wAAD": 341.9,
+     "realised_ci95": [
+      309.2,
+      374.6
+     ],
+     "kinds": {
+      "route": 2,
+      "transfer": 6,
+      "expedite": 10,
+      "provision": 3,
+      "cann": 4
+     }
+    },
+    "oracle_regime_as_records": {
+     "actions": 25,
+     "realised_wAAD": 327.4,
+     "realised_ci95": [
+      296.5,
+      358.3
+     ]
+    },
+    "regret_wAAD": 38.7,
+    "regret_ci95": [
+     17.4,
+     60.0
+    ],
+    "regret_from_records_wAAD": 24.1,
+    "regret_from_records_ci95": [
+     5.0,
+     43.2
+    ],
+    "share_of_oracle_value": 0.887,
+    "score_futures": 32
+   },
+   "runtime_s": 103.5
+  },
+  {
+   "cutoff_day": 1460,
+   "history_seed": 99,
+   "state": {
+    "fitted_units_correct": 1.0,
+    "fitted_slots": 931,
+    "shelf_units_correct": 1.0,
+    "pipeline_units_found": 1.0,
+    "pipeline_stage_correct": 1.0,
+    "pipeline_days_left_mae": 18.4,
+    "waiting_aircraft": [
+     19,
+     19
+    ],
+    "waiting_correct": 1.0,
+    "supply_regime": {
+     "true": {
+      "RU": 1,
+      "FR": 0,
+      "IN": 0
+     },
+     "estimated": {
+      "RU": 0,
+      "FR": 0,
+      "IN": 0
+     }
+    }
+   },
+   "parameters": {
+    "agencies": {
+     "BRD-1": {
+      "tat_true": 32,
+      "tat_est": 32.5,
+      "q_true": 0.25,
+      "q_est": 0.253,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 28,
+      "slots_est": 34
+     },
+     "HAL-K": {
+      "tat_true": 45,
+      "tat_est": 44.5,
+      "q_true": 0.15,
+      "q_est": 0.134,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 26,
+      "slots_est": 33
+     },
+     "MSME-P": {
+      "tat_true": 16,
+      "tat_est": 15.8,
+      "q_true": 0.6,
+      "q_est": 0.504,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 12,
+      "slots_est": 16
+     },
+     "OEM-RU": {
+      "tat_true": 70,
+      "tat_est": 67.2,
+      "q_true": 0.05,
+      "q_est": 0.121,
+      "leg_true": 12,
+      "leg_est": 12.0,
+      "slots_true": 50,
+      "slots_est": 52
+     },
+     "OEM-FR": {
+      "tat_true": 60,
+      "tat_est": 62.9,
+      "q_true": 0.05,
+      "q_est": 0.12,
+      "leg_true": 10,
+      "leg_est": 10.0,
+      "slots_true": 30,
+      "slots_est": 18
+     }
+    },
+    "eta_median_rel_error": 0.143,
+    "beta_median_rel_error": 0.05
+   },
+   "notes": [
+    "Inspections are not recorded yet: each aircraft's inspection timing is spread evenly over its interval.",
+    "Purchase orders in flight are not recorded yet: none are assumed."
+   ],
+   "forecast": {
+    "horizon_days": 90,
+    "availability_true": 0.6296,
+    "availability_estimated": 0.6254,
+    "error_points": -0.43
+   },
+   "decisions": {
+    "records_plan": {
+     "actions": 11,
+     "cost_lakh": 18.85,
+     "claimed_wAAD": 90.6,
+     "claimed_ci95": [
+      75.9,
+      105.4
+     ],
+     "realised_wAAD": 85.6,
+     "realised_ci95": [
+      74.0,
+      97.2
+     ],
+     "kinds": {
+      "transfer": 1,
+      "provision": 1,
+      "cann": 1,
+      "expedite": 8
+     }
+    },
+    "oracle_plan": {
+     "actions": 13,
+     "cost_lakh": 18.35,
+     "claimed_wAAD": 172.3,
+     "realised_wAAD": 183.5,
+     "realised_ci95": [
+      157.7,
+      209.4
+     ],
+     "kinds": {
+      "transfer": 1,
+      "route": 2,
+      "provision": 2,
+      "cann": 4,
+      "expedite": 4
+     }
+    },
+    "oracle_regime_as_records": {
+     "actions": 8,
+     "realised_wAAD": 73.1,
+     "realised_ci95": [
+      65.1,
+      81.0
+     ]
+    },
+    "regret_wAAD": 97.9,
+    "regret_ci95": [
+     76.2,
+     119.6
+    ],
+    "regret_from_records_wAAD": -12.5,
+    "regret_from_records_ci95": [
+     -25.2,
+     0.1
+    ],
+    "share_of_oracle_value": 0.466,
+    "score_futures": 32
+   },
+   "runtime_s": 52.9
+  },
+  {
+   "cutoff_day": 1825,
+   "history_seed": 99,
+   "state": {
+    "fitted_units_correct": 1.0,
+    "fitted_slots": 917,
+    "shelf_units_correct": 1.0,
+    "pipeline_units_found": 1.0,
+    "pipeline_stage_correct": 1.0,
+    "pipeline_days_left_mae": 9.5,
+    "waiting_aircraft": [
+     33,
+     33
+    ],
+    "waiting_correct": 1.0,
+    "supply_regime": {
+     "true": {
+      "RU": 1,
+      "FR": 0,
+      "IN": 0
+     },
+     "estimated": {
+      "RU": 1,
+      "FR": 0,
+      "IN": 0
+     }
+    }
+   },
+   "parameters": {
+    "agencies": {
+     "BRD-1": {
+      "tat_true": 32,
+      "tat_est": 32.0,
+      "q_true": 0.25,
+      "q_est": 0.312,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 28,
+      "slots_est": 34
+     },
+     "HAL-K": {
+      "tat_true": 45,
+      "tat_est": 44.7,
+      "q_true": 0.15,
+      "q_est": 0.132,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 26,
+      "slots_est": 33
+     },
+     "MSME-P": {
+      "tat_true": 16,
+      "tat_est": 15.8,
+      "q_true": 0.6,
+      "q_est": 0.533,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 12,
+      "slots_est": 16
+     },
+     "OEM-RU": {
+      "tat_true": 70,
+      "tat_est": 66.4,
+      "q_true": 0.05,
+      "q_est": 0.144,
+      "leg_true": 12,
+      "leg_est": 12.0,
+      "slots_true": 50,
+      "slots_est": 52
+     },
+     "OEM-FR": {
+      "tat_true": 60,
+      "tat_est": 63.0,
+      "q_true": 0.05,
+      "q_est": 0.147,
+      "leg_true": 10,
+      "leg_est": 10.0,
+      "slots_true": 30,
+      "slots_est": 19
+     }
+    },
+    "eta_median_rel_error": 0.169,
+    "beta_median_rel_error": 0.045
+   },
+   "notes": [
+    "Inspections are not recorded yet: each aircraft's inspection timing is spread evenly over its interval.",
+    "Purchase orders in flight are not recorded yet: none are assumed."
+   ],
+   "forecast": {
+    "horizon_days": 90,
+    "availability_true": 0.631,
+    "availability_estimated": 0.5942,
+    "error_points": -3.68
+   },
+   "decisions": {
+    "records_plan": {
+     "actions": 14,
+     "cost_lakh": 18.85,
+     "claimed_wAAD": 199.2,
+     "claimed_ci95": [
+      172.7,
+      225.7
+     ],
+     "realised_wAAD": 158.6,
+     "realised_ci95": [
+      135.2,
+      181.9
+     ],
+     "kinds": {
+      "route": 2,
+      "transfer": 3,
+      "provision": 2,
+      "expedite": 4,
+      "cann": 3
+     }
+    },
+    "oracle_plan": {
+     "actions": 20,
+     "cost_lakh": 27.95,
+     "claimed_wAAD": 188.1,
+     "realised_wAAD": 166.9,
+     "realised_ci95": [
+      148.4,
+      185.3
+     ],
+     "kinds": {
+      "transfer": 3,
+      "route": 1,
+      "provision": 2,
+      "cann": 5,
+      "expedite": 9
+     }
+    },
+    "oracle_regime_as_records": {
+     "actions": 19,
+     "realised_wAAD": 162.0,
+     "realised_ci95": [
+      142.6,
+      181.4
+     ]
+    },
+    "regret_wAAD": 8.3,
+    "regret_ci95": [
+     -9.6,
+     26.2
+    ],
+    "regret_from_records_wAAD": 3.4,
+    "regret_from_records_ci95": [
+     -15.4,
+     22.3
+    ],
+    "share_of_oracle_value": 0.95,
+    "score_futures": 32
+   },
+   "runtime_s": 70.3
+  },
+  {
+   "cutoff_day": 1500,
+   "history_seed": 7,
+   "state": {
+    "fitted_units_correct": 1.0,
+    "fitted_slots": 926,
+    "shelf_units_correct": 1.0,
+    "pipeline_units_found": 1.0,
+    "pipeline_stage_correct": 1.0,
+    "pipeline_days_left_mae": 15.8,
+    "waiting_aircraft": [
+     24,
+     24
+    ],
+    "waiting_correct": 1.0,
+    "supply_regime": {
+     "true": {
+      "RU": 0,
+      "FR": 0,
+      "IN": 0
+     },
+     "estimated": {
+      "RU": 0,
+      "FR": 0,
+      "IN": 0
+     }
+    }
+   },
+   "parameters": {
+    "agencies": {
+     "BRD-1": {
+      "tat_true": 32,
+      "tat_est": 31.7,
+      "q_true": 0.25,
+      "q_est": 0.289,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 28,
+      "slots_est": 34
+     },
+     "HAL-K": {
+      "tat_true": 45,
+      "tat_est": 45.9,
+      "q_true": 0.15,
+      "q_est": 0.12,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 26,
+      "slots_est": 33
+     },
+     "MSME-P": {
+      "tat_true": 16,
+      "tat_est": 16.0,
+      "q_true": 0.6,
+      "q_est": 0.593,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 12,
+      "slots_est": 16
+     },
+     "OEM-RU": {
+      "tat_true": 70,
+      "tat_est": 69.2,
+      "q_true": 0.05,
+      "q_est": 0.064,
+      "leg_true": 12,
+      "leg_est": 12.0,
+      "slots_true": 50,
+      "slots_est": 52
+     },
+     "OEM-FR": {
+      "tat_true": 60,
+      "tat_est": 60.7,
+      "q_true": 0.05,
+      "q_est": 0.072,
+      "leg_true": 10,
+      "leg_est": 10.0,
+      "slots_true": 30,
+      "slots_est": 18
+     }
+    },
+    "eta_median_rel_error": 0.152,
+    "beta_median_rel_error": 0.064
+   },
+   "notes": [
+    "Inspections are not recorded yet: each aircraft's inspection timing is spread evenly over its interval.",
+    "Purchase orders in flight are not recorded yet: none are assumed."
+   ],
+   "forecast": {
+    "horizon_days": 90,
+    "availability_true": 0.6221,
+    "availability_estimated": 0.6034,
+    "error_points": -1.87
+   },
+   "decisions": {
+    "records_plan": {
+     "actions": 19,
+     "cost_lakh": 25.85,
+     "claimed_wAAD": 207.0,
+     "claimed_ci95": [
+      185.5,
+      228.5
+     ],
+     "realised_wAAD": 175.0,
+     "realised_ci95": [
+      148.0,
+      201.9
+     ],
+     "kinds": {
+      "transfer": 6,
+      "provision": 1,
+      "expedite": 8,
+      "cann": 4
+     }
+    },
+    "oracle_plan": {
+     "actions": 14,
+     "cost_lakh": 22.75,
+     "claimed_wAAD": 160.2,
+     "realised_wAAD": 150.9,
+     "realised_ci95": [
+      131.7,
+      170.1
+     ],
+     "kinds": {
+      "transfer": 4,
+      "provision": 1,
+      "expedite": 9
+     }
+    },
+    "oracle_regime_as_records": {
+     "actions": 14,
+     "realised_wAAD": 150.9,
+     "realised_ci95": [
+      131.7,
+      170.1
+     ]
+    },
+    "regret_wAAD": -24.0,
+    "regret_ci95": [
+     -40.2,
+     -7.9
+    ],
+    "regret_from_records_wAAD": -24.0,
+    "regret_from_records_ci95": [
+     -40.2,
+     -7.9
+    ],
+    "share_of_oracle_value": 1.159,
+    "score_futures": 32
+   },
+   "runtime_s": 49.4
+  },
+  {
+   "cutoff_day": 1825,
+   "history_seed": 5,
+   "state": {
+    "fitted_units_correct": 1.0,
+    "fitted_slots": 923,
+    "shelf_units_correct": 1.0,
+    "pipeline_units_found": 1.0,
+    "pipeline_stage_correct": 1.0,
+    "pipeline_days_left_mae": 11.3,
+    "waiting_aircraft": [
+     27,
+     27
+    ],
+    "waiting_correct": 1.0,
+    "supply_regime": {
+     "true": {
+      "RU": 1,
+      "FR": 0,
+      "IN": 0
+     },
+     "estimated": {
+      "RU": 1,
+      "FR": 0,
+      "IN": 0
+     }
+    }
+   },
+   "parameters": {
+    "agencies": {
+     "BRD-1": {
+      "tat_true": 32,
+      "tat_est": 32.0,
+      "q_true": 0.25,
+      "q_est": 0.145,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 28,
+      "slots_est": 35
+     },
+     "HAL-K": {
+      "tat_true": 45,
+      "tat_est": 44.6,
+      "q_true": 0.15,
+      "q_est": 0.156,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 26,
+      "slots_est": 31
+     },
+     "MSME-P": {
+      "tat_true": 16,
+      "tat_est": 15.9,
+      "q_true": 0.6,
+      "q_est": 0.639,
+      "leg_true": 3,
+      "leg_est": 3.0,
+      "slots_true": 12,
+      "slots_est": 16
+     },
+     "OEM-RU": {
+      "tat_true": 70,
+      "tat_est": 68.6,
+      "q_true": 0.05,
+      "q_est": 0.158,
+      "leg_true": 12,
+      "leg_est": 12.0,
+      "slots_true": 50,
+      "slots_est": 54
+     },
+     "OEM-FR": {
+      "tat_true": 60,
+      "tat_est": 59.9,
+      "q_true": 0.05,
+      "q_est": 0.179,
+      "leg_true": 10,
+      "leg_est": 10.0,
+      "slots_true": 30,
+      "slots_est": 21
+     }
+    },
+    "eta_median_rel_error": 0.123,
+    "beta_median_rel_error": 0.056
+   },
+   "notes": [
+    "Inspections are not recorded yet: each aircraft's inspection timing is spread evenly over its interval.",
+    "Purchase orders in flight are not recorded yet: none are assumed."
+   ],
+   "forecast": {
+    "horizon_days": 90,
+    "availability_true": 0.6075,
+    "availability_estimated": 0.5841,
+    "error_points": -2.33
+   },
+   "decisions": {
+    "records_plan": {
+     "actions": 25,
+     "cost_lakh": 31.95,
+     "claimed_wAAD": 238.1,
+     "claimed_ci95": [
+      206.1,
+      270.1
+     ],
+     "realised_wAAD": 227.3,
+     "realised_ci95": [
+      206.9,
+      247.6
+     ],
+     "kinds": {
+      "route": 2,
+      "provision": 1,
+      "transfer": 4,
+      "expedite": 14,
+      "cann": 4
+     }
+    },
+    "oracle_plan": {
+     "actions": 16,
+     "cost_lakh": 23.25,
+     "claimed_wAAD": 189.9,
+     "realised_wAAD": 179.6,
+     "realised_ci95": [
+      158.9,
+      200.4
+     ],
+     "kinds": {
+      "route": 1,
+      "transfer": 1,
+      "provision": 1,
+      "cann": 3,
+      "expedite": 10
+     }
+    },
+    "oracle_regime_as_records": {
+     "actions": 15,
+     "realised_wAAD": 177.2,
+     "realised_ci95": [
+      155.1,
+      199.3
+     ]
+    },
+    "regret_wAAD": -47.6,
+    "regret_ci95": [
+     -65.6,
+     -29.7
+    ],
+    "regret_from_records_wAAD": -50.0,
+    "regret_from_records_ci95": [
+     -68.3,
+     -31.8
+    ],
+    "share_of_oracle_value": 1.265,
+    "score_futures": 32
+   },
+   "runtime_s": 55.9
+  }
+ ],
+ "summary": {
+  "forecast_error_points": [
+   2.32,
+   -0.43,
+   -3.68,
+   -1.87,
+   -2.33
+  ],
+  "records_plan_realised": [
+   303.3,
+   85.6,
+   158.6,
+   175.0,
+   227.3
+  ],
+  "records_plan_claimed": [
+   293.1,
+   90.6,
+   199.2,
+   207.0,
+   238.1
+  ],
+  "oracle_plan_realised": [
+   341.9,
+   183.5,
+   166.9,
+   150.9,
+   179.6
+  ],
+  "oracle_regime_as_records_realised": [
+   327.4,
+   73.1,
+   162.0,
+   150.9,
+   177.2
+  ],
+  "regret": [
+   38.7,
+   97.9,
+   8.3,
+   -24.0,
+   -47.6
+  ],
+  "regret_from_records": [
+   24.1,
+   -12.5,
+   3.4,
+   -24.0,
+   -50.0
+  ],
+  "share_of_oracle_value": [
+   0.887,
+   0.466,
+   0.95,
+   1.159,
+   1.265
+  ],
+  "mean_regret": 14.7,
+  "mean_regret_from_records": -11.8,
+  "mean_overclaim": 15.6,
+  "mean_forecast_error_points": -1.2
+ }
+}

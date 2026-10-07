@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,8 @@ from pathlib import Path
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+
+from nirantar.persist import file_lock
 
 
 def canonical(obj) -> bytes:
@@ -88,6 +91,22 @@ class Signer:
     def generate(cls, actor: str) -> "Signer":
         return cls(actor, Ed25519PrivateKey.generate())
 
+    @classmethod
+    def load_or_create(cls, path: str | Path, prefix: str) -> "Signer":
+        """A node's long-lived key, kept in ``path``; the actor name carries the key's fingerprint
+        so two nodes (or a node whose key was replaced) never share a name."""
+        path = Path(path)
+        if path.exists():
+            key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(path.read_text().strip()))
+        else:
+            key = Ed25519PrivateKey.generate()
+            raw = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
+                                    serialization.NoEncryption())
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(base64.b64encode(raw).decode())
+        pub = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        return cls(f"{prefix}@{hashlib.sha256(pub).hexdigest()[:8]}", key)
+
     @property
     def public_b64(self) -> str:
         raw = self.key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
@@ -112,17 +131,44 @@ class Ledger:
         self.path = Path(path) if path else None
         self.entries: list[dict] = []
         self.keys: dict[str, str] = {}           # actor -> public key (b64)
-        if self.path and self.path.exists():
-            for line in self.path.read_text().splitlines():
-                if line.strip():
-                    e = json.loads(line)
-                    self.entries.append(e)
-                    self.keys.setdefault(e["actor"], e["actor_key"])
+        self._offset = 0                         # bytes of the file already read
+        self.refresh()
+
+    def refresh(self) -> int:
+        """Read entries other processes have appended since (e.g. an import run while the console serves).
+        Returns how many were new."""
+        if not self.path or not self.path.exists():
+            return 0
+        with self.path.open("rb") as f:
+            f.seek(self._offset)
+            data = f.read()
+        n = 0
+        end = data.rfind(b"\n") + 1                # only whole lines; a writer may be mid-line
+        for line in data[:end].decode("utf-8").splitlines():
+            if line.strip():
+                e = json.loads(line)
+                self.entries.append(e)
+                self.keys.setdefault(e["actor"], e["actor_key"])
+                n += 1
+        self._offset += end
+        return n
 
     def register(self, signer: Signer) -> None:
+        known = self.keys.get(signer.actor)
+        if known is not None and known != signer.public_b64:
+            # silently re-keying an actor would make all its earlier entries fail verification
+            raise ValueError(f"signer {signer.actor!r} is already in the ledger with a different key")
         self.keys[signer.actor] = signer.public_b64
 
     def append(self, kind: str, payload: dict, signer: Signer) -> dict:
+        if not self.path:
+            return self._append(kind, payload, signer)
+        # one writer at a time across processes; catch up first so the chain never forks
+        with file_lock(self.path.with_name(self.path.name + ".lock")):
+            self.refresh()
+            return self._append(kind, payload, signer)
+
+    def _append(self, kind: str, payload: dict, signer: Signer) -> dict:
         self.register(signer)
         prev = self.entries[-1]["entry_hash"] if self.entries else "0" * 64
         payload = json.loads(canonical(payload))       # private copy: callers cannot alter a signed entry
@@ -132,10 +178,14 @@ class Ledger:
         entry = dict(body)
         entry["entry_hash"] = hashlib.sha256(data).hexdigest()
         entry["signature"] = signer.sign(data)
-        self.entries.append(entry)
         if self.path:
-            with self.path.open("a") as f:
-                f.write(json.dumps(entry, default=str) + "\n")
+            line = (json.dumps(entry, default=str) + "\n").encode("utf-8")
+            with self.path.open("ab") as f:
+                f.write(line)
+                f.flush()
+                os.fsync(f.fileno())
+            self._offset += len(line)
+        self.entries.append(entry)
         return entry
 
     # -- verification ----------------------------------------------------

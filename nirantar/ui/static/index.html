@@ -18,12 +18,16 @@
   </div>
   <div class="top-right">
     <span class="banner" role="note">Synthetic demo data (BHARAT-FLEET). Not IAF data.</span>
+    <span id="user-chip" class="user-chip" hidden></span>
+    <button id="logout-btn" class="ghost" type="button" hidden>Log out</button>
+    <button id="demo-btn" class="ghost" type="button" aria-controls="guide">Guided demo</button>
     <button id="theme" class="ghost" type="button" aria-label="Toggle light or dark theme">Theme</button>
   </div>
 </header>
 
 <nav class="tabs" role="tablist" aria-label="Console sections">
   <button role="tab" aria-selected="true" data-tab="readiness">Readiness room</button>
+  <button role="tab" aria-selected="false" data-tab="desk">Decision desk</button>
   <button role="tab" aria-selected="false" data-tab="saarthi">SAARTHI snag entry</button>
   <button role="tab" aria-selected="false" data-tab="opportunities">Opportunities</button>
   <button role="tab" aria-selected="false" data-tab="agencies">Repair agencies</button>
@@ -37,7 +41,7 @@
   <section id="tab-readiness" class="tab-panel" role="tabpanel">
     <div class="row-between">
       <h2>Readiness room</h2>
-      <div class="seg" role="radiogroup" aria-label="Scenario">
+      <div class="seg" id="scen-seg" role="radiogroup" aria-label="Scenario">
         <button role="radio" aria-checked="true" data-scen="normal">Normal operations</button>
         <button role="radio" aria-checked="false" data-scen="supply_shock">Supply shock</button>
       </div>
@@ -85,6 +89,75 @@
       <div class="legend" id="sim-legend"></div>
       <div class="chart" id="sim-fan"></div>
       <div id="sim-summary" class="sim-summary"></div>
+    </div>
+  </section>
+
+  <!-- DECISION DESK -->
+  <section id="tab-desk" class="tab-panel" role="tabpanel" hidden>
+    <div class="row-between">
+      <h2>Decision desk</h2>
+      <div class="btns">
+        <label class="inline">Acting as <select id="role"></select></label>
+        <button class="ghost" id="replan-btn" type="button">Re-plan now</button>
+      </div>
+    </div>
+    <p class="lede">Today's board and a priced plan for the people who can act today. Each action is priced against
+      today's procedures on paired simulated futures. The authority named on it approves, defers or rejects, and every
+      decision is signed into the ledger. NIRANTAR never grounds or releases an aircraft.</p>
+    <div id="plan-status" class="muted" role="status"></div>
+    <div class="tiles" id="desk-tiles"></div>
+    <div class="card" id="clock-card">
+      <div class="row-between">
+        <h3 id="clock-title">Operations clock</h3>
+        <div class="btns">
+          <button class="primary" id="adv1" type="button">Advance 1 day</button>
+          <button class="ghost" id="adv7" type="button">Advance 7 days</button>
+          <button class="ghost" id="clock-reset" type="button">Reset to day 0</button>
+        </div>
+      </div>
+      <p class="hint">Approved actions are applied when the clock advances. A shadow fleet meets exactly the same failures,
+        repair times and supply conditions but takes no decisions, so the gap between the two lines is what the decisions bought.</p>
+      <div class="shock-row">
+        <label class="inline">Declare a disruption:
+          <select id="shock-country"><option value="RU">Russian supply</option><option value="FR">French supply</option></select></label>
+        <label class="inline">for
+          <select id="shock-days"><option>30</option><option>60</option><option selected>120</option><option>180</option></select> days</label>
+        <button class="ghost" id="shock-btn" type="button">Declare from today</button>
+        <span id="shock-status" class="shock-status"></span>
+      </div>
+      <div class="tiles" id="clock-tiles"></div>
+      <div class="legend" id="clock-legend"></div>
+      <div class="chart" id="clock-chart"></div>
+      <details id="clock-log"><summary>Station log</summary><ul class="events" id="clock-events"></ul></details>
+    </div>
+    <div class="card">
+      <div class="row-between"><h3>Base readiness board</h3>
+        <div class="seg" id="base-seg" role="radiogroup" aria-label="Base"></div></div>
+      <div id="fleet-status"></div>
+      <h4>Aircraft waiting for parts</h4>
+      <div id="aog-table"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Highest risk of a new failure in the next 7 days</h3>
+        <p class="hint">Serviceable aircraft. From the fitted reliability model and each fitted part's estimated age.</p></div>
+      <div class="chart" id="risk-bars"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Today's plan</h3><p class="hint" id="plan-hint"></p></div>
+      <div id="plan-table"></div>
+      <details><summary id="ns-summary">Considered but not selected</summary><div id="ns-table"></div></details>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Approved actions vs today's procedures</h3>
+        <p class="hint">Re-simulates the plan horizon on 12 fresh paired futures, not the ones used to choose the plan,
+          so it is a fair check of the plan's value. Shaded band: 10th to 90th percentile; line: median.</p></div>
+      <div class="btns">
+        <button class="primary" id="outcome-btn" type="button">Simulate approved actions</button>
+        <button class="ghost" id="outcome-all-btn" type="button">Simulate the whole plan</button>
+      </div>
+      <div class="legend" id="outcome-legend"></div>
+      <div class="chart" id="outcome-fan"></div>
+      <div id="outcome-summary" class="sim-summary"></div>
     </div>
   </section>
 
@@ -205,9 +278,42 @@
       <div id="verify-result" role="status"></div>
       <div id="ledger-table"></div>
     </div>
+    <div class="card" id="access-card" hidden>
+      <h3>Access: user accounts and sign-in log</h3>
+      <p class="muted small">Accounts are managed on the server with <code>python -m nirantar users</code>. Each user signs with their own key; a password reset issues a new one.</p>
+      <div id="access-users"></div>
+      <h4>Recent sign-in and access events</h4>
+      <div id="access-audit"></div>
+    </div>
   </section>
 </main>
 
+<aside id="guide" class="guide" hidden aria-label="Guided demo">
+  <div class="guide-head">
+    <span id="guide-step" class="muted"></span>
+    <span id="guide-clock" class="guide-clock"></span>
+    <button id="guide-mini" class="ghost small-btn" type="button">Minimise</button>
+    <button id="guide-close" class="ghost small-btn" type="button" aria-label="Close the guided demo">Close</button>
+  </div>
+  <h3 id="guide-title"></h3>
+  <ul id="guide-notes" class="guide-notes"></ul>
+  <div class="guide-btns">
+    <button id="guide-back" class="ghost" type="button">Back</button>
+    <button id="guide-do" class="primary" type="button">Do it</button>
+    <button id="guide-next" class="ghost" type="button">Next</button>
+  </div>
+  <p class="hint">Keys: ← back · → next · D do it</p>
+</aside>
+<div id="login" class="login" hidden>
+  <form id="login-form" class="card login-card" autocomplete="on">
+    <h2>Sign in to NIRANTAR</h2>
+    <p class="muted small">Your decisions are signed with your own key, unlocked by your passphrase for this session only.</p>
+    <label class="login-field">Username <input id="login-user" name="username" autocomplete="username" required></label>
+    <label class="login-field">Passphrase <input id="login-pass" name="password" type="password" autocomplete="current-password" required></label>
+    <button class="primary" type="submit">Sign in</button>
+    <p id="login-error" class="login-error" role="alert"></p>
+  </form>
+</div>
 <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <script src="/app.js"></script>

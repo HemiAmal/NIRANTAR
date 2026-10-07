@@ -33,6 +33,7 @@ PRIOR_GAMMA_SD = 0.5
 PRIOR_ETA_SD = 0.7
 PRIOR_Q = (logit(0.3), 1.5)
 PRIOR_LOG_K = (math.log(4.0), 1.0)
+PRIOR_BETA_PN_SD = 0.3          # per-part shape around its family's (``part_shape=True``)
 
 
 @dataclass
@@ -108,17 +109,20 @@ def build_design(spells: pd.DataFrame, family_of: dict[str, str]) -> _Design:
 class _Objective:
     """Negative log posterior and its gradient."""
 
-    def __init__(self, d: _Design):
+    def __init__(self, d: _Design, part_shape: bool = False):
         self.d = d
         self.P, self.F, self.FE, self.G = len(d.pns), len(d.fams), len(d.fes), len(d.agencies)
-        self.sizes = [self.P, self.F, self.F, self.FE, self.G, 1]
+        self.part_shape = part_shape
+        self.sizes = [self.P, self.F, self.F, self.FE, self.G, 1] + ([self.P] if part_shape else [])
 
     def split(self, x):
         out, k = [], 0
         for s in self.sizes:
             out.append(x[k:k + s])
             k += s
-        return out    # log_eta, mu_f, log_beta, gamma, logit_q, log_k
+        if not self.part_shape:
+            out.append(np.zeros(self.P))
+        return out    # log_eta, mu_f, log_beta, gamma, logit_q, log_k, per-part shape deviation
 
     def x0(self) -> np.ndarray:
         d = self.d
@@ -126,14 +130,15 @@ class _Objective:
         log_eta = np.log(np.maximum(mean_exit, 1.0) * 1.2)
         mu = np.array([log_eta[d.fam_of_pn == f].mean() for f in range(self.F)])
         return np.concatenate([log_eta, mu, np.full(self.F, PRIOR_LOG_BETA[0]),
-                               np.zeros(self.FE), np.full(self.G, PRIOR_Q[0]), [PRIOR_LOG_K[0]]])
+                               np.zeros(self.FE), np.full(self.G, PRIOR_Q[0]), [PRIOR_LOG_K[0]]]
+                              + ([np.zeros(self.P)] if self.part_shape else []))
 
     def __call__(self, x):
         d = self.d
-        log_eta_p, mu_f, log_beta_f, gamma, lq, lk = self.split(x)
+        log_eta_p, mu_f, log_beta_f, gamma, lq, lk, db = self.split(x)
         k = float(np.exp(lk[0]))
         q = expit(lq)
-        beta = np.exp(log_beta_f)[d.fam_idx]
+        beta = np.exp(log_beta_f[d.fam_idx] + db[d.pn_idx])
         log_eta = log_eta_p[d.pn_idx] + gamma[d.fe_idx]
         eta = np.exp(log_eta)
         V = d.M @ q
@@ -161,6 +166,7 @@ class _Objective:
         lp += -0.5 * np.sum((gamma / PRIOR_GAMMA_SD) ** 2)
         lp += -0.5 * np.sum(((lq - PRIOR_Q[0]) / PRIOR_Q[1]) ** 2)
         lp += -0.5 * ((lk[0] - PRIOR_LOG_K[0]) / PRIOR_LOG_K[1]) ** 2
+        lp += -0.5 * np.sum((db / PRIOR_BETA_PN_SD) ** 2)
         f = -(ll + lp)
 
         # gradient of ll
@@ -185,7 +191,10 @@ class _Objective:
         g_gamma -= gamma / PRIOR_GAMMA_SD ** 2
         g_lq -= (lq - PRIOR_Q[0]) / PRIOR_Q[1] ** 2
         g_lk -= (lk[0] - PRIOR_LOG_K[0]) / PRIOR_LOG_K[1] ** 2
-        grad = -np.concatenate([g_log_eta_p, g_mu, g_log_beta, g_gamma, g_lq, [g_lk]])
+        parts = [g_log_eta_p, g_mu, g_log_beta, g_gamma, g_lq, [g_lk]]
+        if self.part_shape:
+            parts.append(np.bincount(d.pn_idx, d_logbeta_spell, self.P) - db / PRIOR_BETA_PN_SD ** 2)
+        grad = -np.concatenate(parts)
         return f, grad
 
 
@@ -214,7 +223,8 @@ class TierCModel:
         self.log_beta_f = self.x[k:k + F]; k += F
         self.gamma = self.x[k:k + FE]; k += FE
         self.logit_q = self.x[k:k + G]; k += G
-        self.frailty_k = float(np.exp(self.x[k]))
+        self.frailty_k = float(np.exp(self.x[k])); k += 1
+        self.dlog_beta_p = self.x[k:k + P] if len(self.x) >= k + P else np.zeros(P)
         self._pn = {p: i for i, p in enumerate(self.pns)}
         self._fam = {f: i for i, f in enumerate(self.fams)}
         self._fe = {fe: i for i, fe in enumerate(self.fes)}
@@ -225,6 +235,7 @@ class TierCModel:
         fam = self.family_of[pn]
         beta = float(np.exp(self.log_beta_f[self._fam[fam]])) if fam in self._fam else 1.5
         if pn in self._pn:
+            beta *= float(np.exp(self.dlog_beta_p[self._pn[pn]]))
             log_eta = self.log_eta_p[self._pn[pn]]
         elif fam in self._fam:
             log_eta = self.mu_f[self._fam[fam]]
@@ -291,9 +302,12 @@ def _z(level: float) -> float:
     return float(norm.ppf(0.5 + level / 2))
 
 
-def fit_tier_c(spells: pd.DataFrame, family_of: dict[str, str], hessian: bool = True) -> TierCModel:
+def fit_tier_c(spells: pd.DataFrame, family_of: dict[str, str], hessian: bool = True,
+               part_shape: bool = False) -> TierCModel:
+    """MAP fit. ``part_shape``: each part number gets its own Weibull shape, shrunk towards its family's
+    (otherwise the shape is shared within a family)."""
     d = build_design(spells, family_of)
-    obj = _Objective(d)
+    obj = _Objective(d, part_shape)
     res = minimize(obj, obj.x0(), jac=True, method="L-BFGS-B", options={"maxiter": 2000})
     x = res.x
     if hessian:
