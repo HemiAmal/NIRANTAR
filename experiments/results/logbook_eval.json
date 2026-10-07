@@ -1,0 +1,100 @@
+{
+ "test": {
+  "test_entries": 4383,
+  "with_reference": 4330,
+  "dev_entries": 1726,
+  "vocabulary": {
+   "heads": 252,
+   "qualifiers": 104,
+   "part_names_from_dev": 83,
+   "ipc_rows": 307
+  },
+  "part_exact": {
+   "n": 3751,
+   "agree": 0.806
+  },
+  "part_same_head_noun": {
+   "n": 3751,
+   "agree": 0.907
+  },
+  "part_overlap_half": {
+   "n": 3751,
+   "agree": 0.921
+  },
+  "part_exact_ipc_vocabulary_only": {
+   "n": 3751,
+   "agree": 0.796
+  },
+  "problem": {
+   "n": 3843,
+   "agree": 0.993
+  },
+  "cylinders": {
+   "n": 4324,
+   "agree": 0.96
+  },
+  "engine_side": {
+   "n": 4324,
+   "agree": 0.982
+  },
+  "action": {
+   "n": 3922,
+   "agree": 0.949
+  },
+  "linked_to_ipc": 0.664,
+  "coverage": {
+   "part": 0.968,
+   "problem": 0.896,
+   "action": 0.959
+  }
+ },
+ "dev": {
+  "test_entries": 1726,
+  "with_reference": 1704,
+  "dev_entries": 1726,
+  "vocabulary": {
+   "heads": 252,
+   "qualifiers": 104,
+   "part_names_from_dev": 83,
+   "ipc_rows": 307
+  },
+  "part_exact": {
+   "n": 1447,
+   "agree": 0.804
+  },
+  "part_same_head_noun": {
+   "n": 1447,
+   "agree": 0.913
+  },
+  "part_overlap_half": {
+   "n": 1447,
+   "agree": 0.918
+  },
+  "part_exact_ipc_vocabulary_only": {
+   "n": 1447,
+   "agree": 0.777
+  },
+  "problem": {
+   "n": 1507,
+   "agree": 0.994
+  },
+  "cylinders": {
+   "n": 1701,
+   "agree": 0.962
+  },
+  "engine_side": {
+   "n": 1701,
+   "agree": 0.982
+  },
+  "action": {
+   "n": 1535,
+   "agree": 0.95
+  },
+  "linked_to_ipc": 0.641,
+  "coverage": {
+   "part": 0.97,
+   "problem": 0.894,
+   "action": 0.962
+  }
+ }
+}

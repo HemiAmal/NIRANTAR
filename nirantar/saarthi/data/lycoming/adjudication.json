@@ -1,0 +1,491 @@
+{
+ "method": "20 random disagreements per field on the held-out test split (seed 3), judged from the entry text by the developer (not a maintenance expert). 'ours' = SAARTHI logbook extractor right, 'ref' = GPT-4o silver right.",
+ "fields": {
+  "part": {
+   "counts": {
+    "ours": 15,
+    "ref": 5,
+    "neither": 0,
+    "ambiguous": 0
+   },
+   "items": [
+    {
+     "id": 106162,
+     "verdict": "ours"
+    },
+    {
+     "id": 106043,
+     "verdict": "ours"
+    },
+    {
+     "id": 102217,
+     "verdict": "ref"
+    },
+    {
+     "id": 102995,
+     "verdict": "ours"
+    },
+    {
+     "id": 105275,
+     "verdict": "ours"
+    },
+    {
+     "id": 105338,
+     "verdict": "ours"
+    },
+    {
+     "id": 100135,
+     "verdict": "ref"
+    },
+    {
+     "id": 105859,
+     "verdict": "ours"
+    },
+    {
+     "id": 105931,
+     "verdict": "ours"
+    },
+    {
+     "id": 106079,
+     "verdict": "ours"
+    },
+    {
+     "id": 104433,
+     "verdict": "ours"
+    },
+    {
+     "id": 104488,
+     "verdict": "ours"
+    },
+    {
+     "id": 105471,
+     "verdict": "ours"
+    },
+    {
+     "id": 104769,
+     "verdict": "ref"
+    },
+    {
+     "id": 101541,
+     "verdict": "ours"
+    },
+    {
+     "id": 106055,
+     "verdict": "ours"
+    },
+    {
+     "id": 104908,
+     "verdict": "ours"
+    },
+    {
+     "id": 101216,
+     "verdict": "ours"
+    },
+    {
+     "id": 103550,
+     "verdict": "ref"
+    },
+    {
+     "id": 101550,
+     "verdict": "ref"
+    }
+   ]
+  },
+  "problem": {
+   "counts": {
+    "ours": 15,
+    "ref": 3,
+    "neither": 0,
+    "ambiguous": 2
+   },
+   "items": [
+    {
+     "id": 105054,
+     "verdict": "ours"
+    },
+    {
+     "id": 105214,
+     "verdict": "ours"
+    },
+    {
+     "id": 105707,
+     "verdict": "ours"
+    },
+    {
+     "id": 102204,
+     "verdict": "ours"
+    },
+    {
+     "id": 104371,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 105539,
+     "verdict": "ours"
+    },
+    {
+     "id": 105314,
+     "verdict": "ref"
+    },
+    {
+     "id": 105802,
+     "verdict": "ours"
+    },
+    {
+     "id": 100578,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 105677,
+     "verdict": "ref"
+    },
+    {
+     "id": 103550,
+     "verdict": "ours"
+    },
+    {
+     "id": 105721,
+     "verdict": "ours"
+    },
+    {
+     "id": 100556,
+     "verdict": "ours"
+    },
+    {
+     "id": 105053,
+     "verdict": "ours"
+    },
+    {
+     "id": 104127,
+     "verdict": "ours"
+    },
+    {
+     "id": 102559,
+     "verdict": "ours"
+    },
+    {
+     "id": 101739,
+     "verdict": "ours"
+    },
+    {
+     "id": 102306,
+     "verdict": "ours"
+    },
+    {
+     "id": 105674,
+     "verdict": "ref"
+    },
+    {
+     "id": 103630,
+     "verdict": "ours"
+    }
+   ]
+  },
+  "action": {
+   "counts": {
+    "ours": 13,
+    "ref": 5,
+    "neither": 2,
+    "ambiguous": 0
+   },
+   "items": [
+    {
+     "id": 104323,
+     "verdict": "ours"
+    },
+    {
+     "id": 103189,
+     "verdict": "ours"
+    },
+    {
+     "id": 103660,
+     "verdict": "ours"
+    },
+    {
+     "id": 105447,
+     "verdict": "ours"
+    },
+    {
+     "id": 100151,
+     "verdict": "ours"
+    },
+    {
+     "id": 105417,
+     "verdict": "ref"
+    },
+    {
+     "id": 101063,
+     "verdict": "ours"
+    },
+    {
+     "id": 105950,
+     "verdict": "ref"
+    },
+    {
+     "id": 102545,
+     "verdict": "ours"
+    },
+    {
+     "id": 103313,
+     "verdict": "ours"
+    },
+    {
+     "id": 105749,
+     "verdict": "ours"
+    },
+    {
+     "id": 105651,
+     "verdict": "neither"
+    },
+    {
+     "id": 104894,
+     "verdict": "ref"
+    },
+    {
+     "id": 105039,
+     "verdict": "ours"
+    },
+    {
+     "id": 103385,
+     "verdict": "neither"
+    },
+    {
+     "id": 103358,
+     "verdict": "ours"
+    },
+    {
+     "id": 103581,
+     "verdict": "ours"
+    },
+    {
+     "id": 101783,
+     "verdict": "ours"
+    },
+    {
+     "id": 104623,
+     "verdict": "ref"
+    },
+    {
+     "id": 104604,
+     "verdict": "ref"
+    }
+   ]
+  },
+  "cyl": {
+   "counts": {
+    "ours": 12,
+    "ref": 8,
+    "neither": 0,
+    "ambiguous": 0
+   },
+   "items": [
+    {
+     "id": 102197,
+     "verdict": "ref"
+    },
+    {
+     "id": 100204,
+     "verdict": "ref"
+    },
+    {
+     "id": 103552,
+     "verdict": "ours"
+    },
+    {
+     "id": 103396,
+     "verdict": "ours"
+    },
+    {
+     "id": 102316,
+     "verdict": "ours"
+    },
+    {
+     "id": 102945,
+     "verdict": "ours"
+    },
+    {
+     "id": 100677,
+     "verdict": "ref"
+    },
+    {
+     "id": 104455,
+     "verdict": "ours"
+    },
+    {
+     "id": 104374,
+     "verdict": "ours"
+    },
+    {
+     "id": 105461,
+     "verdict": "ours"
+    },
+    {
+     "id": 104132,
+     "verdict": "ours"
+    },
+    {
+     "id": 103917,
+     "verdict": "ref"
+    },
+    {
+     "id": 104249,
+     "verdict": "ours"
+    },
+    {
+     "id": 100317,
+     "verdict": "ref"
+    },
+    {
+     "id": 100205,
+     "verdict": "ref"
+    },
+    {
+     "id": 100035,
+     "verdict": "ref"
+    },
+    {
+     "id": 106162,
+     "verdict": "ours"
+    },
+    {
+     "id": 102011,
+     "verdict": "ref"
+    },
+    {
+     "id": 105922,
+     "verdict": "ours"
+    },
+    {
+     "id": 100218,
+     "verdict": "ours"
+    }
+   ]
+  },
+  "engine": {
+   "counts": {
+    "ours": 0,
+    "ref": 4,
+    "neither": 0,
+    "ambiguous": 16
+   },
+   "items": [
+    {
+     "id": 103750,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 104127,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 101348,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 102774,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 105086,
+     "verdict": "ref"
+    },
+    {
+     "id": 100939,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 104397,
+     "verdict": "ref"
+    },
+    {
+     "id": 104899,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 104754,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 102846,
+     "verdict": "ref"
+    },
+    {
+     "id": 104473,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 105838,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 104312,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 105674,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 105185,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 102177,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 102792,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 102326,
+     "verdict": "ref"
+    },
+    {
+     "id": 105591,
+     "verdict": "ambiguous"
+    },
+    {
+     "id": 104091,
+     "verdict": "ambiguous"
+    }
+   ]
+  }
+ },
+ "patterns_seen_in_test_not_applied": [
+  "cylinder lists after plural part nouns or at the start ('ROCKER COVERS 2, 3 & 4', '2, 3, 4 ROCKER COVER GASKETS')",
+  "'ALL VALVE COVERS' meaning all cylinders",
+  "'GROUND RUN' read as the repair verb 'ground'",
+  "'PERFORMED CORROSION PREVENTION' read as install",
+  "a more specific part named after the problem ('TABS ... ON BAFFLE PLUGS', 'CHT NEEDLE')"
+ ],
+ "ipc_linking": {
+  "method": "30 random held-out test entries per sample; the top catalogue link judged from the entry text by the developer.",
+  "samples": [
+   {
+    "seed": 11,
+    "rules": "first version",
+    "offered": 26,
+    "correct": 15,
+    "abstained": 4,
+    "note": "used to design the rules below"
+   },
+   {
+    "seed": 12,
+    "rules": "shared qualifier required; generic/position words ignored; whole engine never linked",
+    "offered": 20,
+    "correct": 14,
+    "abstained": 10,
+    "note": "used to add the ask-don't-guess rule"
+   },
+   {
+    "seed": 13,
+    "rules": "final (bare type word with several catalogue entries: ask, do not guess)",
+    "offered": 22,
+    "correct": 16,
+    "abstained": 8,
+    "note": "unseen; errors mostly airframe baffles, which the engine-only catalogue does not list"
+   }
+  ]
+ }
+}

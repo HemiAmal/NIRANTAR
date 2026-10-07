@@ -77,6 +77,8 @@ def main() -> None:
     rf.add_argument("--holdout-days", type=float, default=365.0)
     vp = sub.add_parser("validate-public", help="check DHANVANTARI on real public reliability data")
     vp.add_argument("--out", default="experiments/results")
+    lb = sub.add_parser("logbook-eval", help="score SAARTHI's logbook extractor on 6,169 real maintenance entries")
+    lb.add_argument("--out", default="experiments/results")
     ev = sub.add_parser("saarthi-eval", help="score the SAARTHI snag extractor on synthetic utterances")
     ev.add_argument("--n", type=int, default=900)
     ev.add_argument("--seed", type=int, default=0)
@@ -198,6 +200,20 @@ def main() -> None:
         Path(args.out).mkdir(parents=True, exist_ok=True)
         (Path(args.out) / "public_validation.json").write_text(json.dumps(clean_json(r), indent=1), encoding="utf-8")
         print(f"-> {Path(args.out) / 'public_validation.json'}")
+        return
+    if args.cmd == "logbook-eval":
+        import json
+        from pathlib import Path
+
+        from nirantar.saarthi.logbook_eval import evaluate
+        r = {"test": evaluate(split="test"), "dev": evaluate(split="dev")}
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        (Path(args.out) / "logbook_eval.json").write_text(json.dumps(r, indent=1, default=str), encoding="utf-8")
+        t = r["test"]
+        print(f"{t['test_entries']} held-out entries: part {t['part_exact']['agree']:.0%} exact "
+              f"({t['part_same_head_noun']['agree']:.0%} same part noun), problem {t['problem']['agree']:.0%}, "
+              f"cylinders {t['cylinders']['agree']:.0%}, engine {t['engine_side']['agree']:.0%}, "
+              f"action {t['action']['agree']:.0%} agreement with the GPT-4o reference")
         return
     if args.cmd == "saarthi-eval":
         import json
