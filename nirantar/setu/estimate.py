@@ -328,23 +328,24 @@ def _state(world: World, model: TierCModel, fr: dict, id_of: dict, stats: pd.Dat
             stock[(r.base, r.pn)].append(id_of[r.serial])
     last_removal = sp.dropna(subset=["removal_day"]).sort_values("removal_day").groupby("serial").last()
     last_done = done.groupby("serial")["done_day"].max()
-    for s, r in last_removal.iterrows():
+    fitted = {sid for v in installed.values() for sid in v.values()}
+    last_done_d = last_done.to_dict()
+    for s, rem_day, exit_fh in zip(last_removal.index, last_removal["removal_day"], last_removal["exit_fh"]):
         sid = id_of[s]
-        if any(sid in v for v in installed.values() for v in [v.values()]):
+        if sid in fitted:
             continue
-        if s in last_done.index and last_done[s] >= r["removal_day"]:
+        if s in last_done_d and last_done_d[s] >= rem_day:
             X[sid] = 0.0
         else:
-            X[sid] = float(r["exit_fh"]) if r["exit_fh"] == r["exit_fh"] else 0.0
+            X[sid] = float(exit_fh) if exit_fh == exit_fh else 0.0
 
     # repair pipeline
     # units in transit: today's estimated supply regime stretches their legs; one overdue is due soon
     mult_now = {c: m["multipliers"][regimes_now.get(c, 0)] for c, m in risk.items()}
     pipeline = []
     in_stock = {sid for v in stock.values() for sid in v}
-    fitted = {sid for v in installed.values() for sid in v.values()}
     rec = fr["receipts"].sort_values("day")
-    last_receipt = rec.groupby("serial")["day"].max()
+    last_receipt = rec.groupby("serial")["day"].max().to_dict()
     open_rep = rep[rep["done_day"].isna()]
     for k, r in enumerate(open_rep.itertuples()):
         sid = id_of[r.serial]
@@ -359,15 +360,16 @@ def _state(world: World, model: TierCModel, fr: dict, id_of: dict, stats: pd.Dat
         else:                                             # on its way to the agency, or queued there
             leg = a["out_leg_base"] * mult_now.get(a["country"], 1.0)
             pipeline.append({"type": "job", **job, "dt": max(0.1 * leg, leg - (now - r.sent_day))})
+    in_repair_now = set(open_rep["serial"])
     for r in done.itertuples():                           # repaired, not yet received back at base
         sid = id_of[r.serial]
         if sid in in_stock or sid in fitted:
             continue
-        if r.serial in last_receipt.index and last_receipt[r.serial] >= r.done_day - 1e-6:
+        if r.serial in last_receipt and last_receipt[r.serial] >= r.done_day - 1e-6:
             continue
-        if done[done["serial"] == r.serial]["done_day"].max() > r.done_day:
+        if last_done_d[r.serial] > r.done_day:            # only the unit's latest repair can still be in transit
             continue
-        if not open_rep[open_rep["serial"] == r.serial].empty:
+        if r.serial in in_repair_now:
             continue
         a = st.loc[r.agency]
         leg = a["back_leg_base"] * mult_now.get(a["country"], 1.0)
@@ -377,11 +379,12 @@ def _state(world: World, model: TierCModel, fr: dict, id_of: dict, stats: pd.Dat
     # aircraft waiting for parts: empty slots, waiting since the last removal from that slot
     waiting = []
     last_out = sp.dropna(subset=["removal_day"]).sort_values("removal_day").groupby(["tail", "pn", "position"])["removal_day"].last()
+    pns_of = defaultdict(list)
+    for p in world.pns.values():
+        pns_of[p.fleet].append(p)
     for t in world.tails:
         inst = installed.get(t["id"], {})
-        for p in world.pns.values():
-            if p.fleet != t["fleet"]:
-                continue
+        for p in pns_of[t["fleet"]]:
             for k in range(p.positions):
                 if (p.pn, k) not in inst:
                     since = last_out.get((t["id"], p.pn, k + 1), now)
