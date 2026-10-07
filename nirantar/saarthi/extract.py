@@ -41,8 +41,32 @@ def normalise(text: str) -> str:
     return s
 
 
+# spoken letters (NATO alphabet and letter names) -> letters, as speech recognisers write them
+SPOKEN_LETTERS = {
+    "alpha": "a", "alfa": "a", "bravo": "b", "charlie": "c", "delta": "d", "echo": "e", "foxtrot": "f", "golf": "g",
+    "hotel": "h", "india": "i", "juliet": "j", "juliett": "j", "kilo": "k", "lima": "l", "mike": "m",
+    "november": "n", "oscar": "o", "papa": "p", "quebec": "q", "romeo": "r", "sierra": "s", "tango": "t",
+    "uniform": "u", "victor": "v", "whiskey": "w", "whisky": "w", "xray": "x", "x-ray": "x", "yankee": "y",
+    "zulu": "z", "eff": "f", "ef": "f", "eye": "i", "aitch": "h", "ech": "h",
+}
+
+
+def spoken_letters(s: str) -> str:
+    """'foxtrot india bravo one oh seven' -> 'f i b one zero seven' ('oh' only between number words)."""
+    words = s.split(" ")
+    nums = {"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "oh"} | set("0123456789")
+    out = []
+    for i, w in enumerate(words):
+        if w == "oh" and ((i and words[i - 1] in nums) or (i + 1 < len(words) and words[i + 1] in nums and
+                                                         i and words[i - 1] in SPOKEN_LETTERS.values())):
+            out.append("zero")
+        else:
+            out.append(SPOKEN_LETTERS.get(w, w))
+    return " ".join(out)
+
+
 def tokens_of(text: str) -> list[str]:
-    s = normalise(text)
+    s = spoken_letters(normalise(text))
     # split letter/digit runs written together ("b1" is kept; "2nd" is kept; "pump2" -> "pump 2")
     s = re.sub(r"(?<=[a-z]{3})(?=\d)|(?<=\d)(?=[a-z]{3})", " ", s)
     return [t for t in _SPLIT.split(s) if t]
