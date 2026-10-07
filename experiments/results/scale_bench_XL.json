@@ -1,0 +1,44 @@
+{
+ "size": "XL",
+ "cpus": 4,
+ "workers": null,
+ "stages": {
+  "world": 0.5,
+  "history_5_years": 54.3,
+  "frames": 2.0,
+  "reliability_fit": 19.3,
+  "export_files": 14.2,
+  "import_checked": 24.5,
+  "estimate_from_records": 63.6,
+  "ledger_append_20000": 5.9,
+  "ledger_verify_20000": 2.2,
+  "plan_today": 1479.0
+ },
+ "fleet": {
+  "aircraft": 1692,
+  "types": 6,
+  "bases": 24,
+  "part_numbers": 180,
+  "units": 106962
+ },
+ "records": {
+  "spells": 327183,
+  "repairs": 231768,
+  "snags": 231768,
+  "receipts": 222772
+ },
+ "estimate_rogues": 1356,
+ "peak_memory_mb": 2822,
+ "plan": {
+  "candidates": 2854,
+  "refined": 1634,
+  "actions": 92,
+  "value_wAAD": 1348.5,
+  "ci95": [
+   1229.1,
+   1468.0
+  ],
+  "priced_by_fleet": true
+ },
+ "note": "plan_today and plan from the full run; other stages re-timed after the record-path fixes (before: import 123.8 s, estimate 253.0 s)"
+}
