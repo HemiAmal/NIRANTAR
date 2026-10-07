@@ -942,14 +942,68 @@ function renderEntries() {
     : `<p class="muted">No snags signed yet. Speak or type one above.</p>`;
 }
 
+// voice input: the node's own recogniser when it has a speech model; browser speech (a cloud service) only in demo mode
+const REC = { ctx: null, stream: null, node: null, chunks: [], t0: 0 };
+
+async function recordStart() {
+  REC.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  REC.ctx = new AudioContext({ sampleRate: 16000 });
+  await REC.ctx.audioWorklet.addModule("/recorder-worklet.js");
+  const src = REC.ctx.createMediaStreamSource(REC.stream);
+  REC.node = new AudioWorkletNode(REC.ctx, "nirantar-recorder");
+  REC.chunks = []; REC.t0 = performance.now();
+  REC.node.port.onmessage = (ev) => REC.chunks.push(ev.data);
+  src.connect(REC.node);
+}
+
+async function recordStop() {
+  const rate = REC.ctx.sampleRate;
+  REC.stream.getTracks().forEach((t) => t.stop());
+  await REC.ctx.close();
+  const n = REC.chunks.reduce((a, c) => a + c.length, 0), pcm = new Int16Array(n);
+  let i = 0;
+  for (const c of REC.chunks) for (const v of c) pcm[i++] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
+  REC.ctx = REC.stream = REC.node = null;
+  return { pcm, rate };
+}
+
 function micSetup() {
-  const mic = $("#mic"), status = $("#mic-status");
-  if (!SR) {
-    mic.disabled = true;
-    status.textContent = "Voice input needs Chrome or Edge. Typing works everywhere.";
+  const mic = $("#mic"), status = $("#mic-status"), asr = (SN.opts && SN.opts.asr) || { available: false };
+  const setPressed = (on) => { mic.setAttribute("aria-pressed", String(on)); mic.setAttribute("aria-label", on ? "Stop voice input" : "Start voice input"); };
+  if (asr.available) {
+    const langs = Object.keys(asr.languages);
+    status.textContent = `Tap the microphone, speak, tap again. Recognised on this node (${langs.join(", ")}).`;
+    let recording = false;
+    mic.addEventListener("click", async () => {
+      if (!recording) {
+        try { await recordStart(); } catch (e) { status.textContent = "Microphone unavailable: " + e.message; return; }
+        recording = true; setPressed(true); snStart("voice"); status.textContent = "Listening… tap again to finish.";
+        return;
+      }
+      recording = false; setPressed(false); status.textContent = "Recognising…";
+      try {
+        const { pcm, rate } = await recordStop();
+        const want = $("#asr-lang").value.slice(0, 2), lang = langs.includes(want) ? want : langs[0];
+        const r = await fetch(`/api/saarthi/transcribe?lang=${lang}`, { method: "POST", body: pcm.buffer,
+          headers: { "X-Nirantar": "1", "Content-Type": `audio/l16; rate=${rate}` } });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.statusText);
+        if (!j.text) { status.textContent = "Heard nothing clear. Try again closer to the mic, or type."; return; }
+        $("#snag-text").value = j.text;
+        const alt = j.chosen === "restricted" ? j.free_text : j.restricted_text;
+        status.textContent = alt && alt !== j.text ? `Got it. The other reading was: “${alt}”` : "Got it.";
+        SN.input = "voice"; snParse();
+      } catch (e) { status.textContent = "Voice error: " + e.message + ". Type the snag instead."; }
+    });
     return;
   }
-  status.textContent = "Tap the microphone and speak.";
+  if (!SR || ME.mode === "secure") {
+    mic.disabled = true;
+    status.textContent = ME.mode === "secure" ? "Voice input needs a speech model on this node (ask the administrator). Typing works."
+      : "Voice input needs Chrome or Edge. Typing works everywhere.";
+    return;
+  }
+  status.textContent = "Tap the microphone and speak. (Demo: the browser's speech service is online; use the node's model on a closed network.)";
   mic.addEventListener("click", () => {
     if (recog) { recog.stop(); return; }
     recog = new SR();
@@ -959,7 +1013,7 @@ function micSetup() {
     recog.maxAlternatives = 1;
     snStart("voice");
     let finalText = "";
-    recog.onstart = () => { mic.setAttribute("aria-pressed", "true"); mic.setAttribute("aria-label", "Stop voice input"); status.textContent = "Listening…"; };
+    recog.onstart = () => { setPressed(true); status.textContent = "Listening…"; };
     recog.onresult = (ev) => {
       let interim = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
@@ -973,7 +1027,7 @@ function micSetup() {
         network: "Speech service unreachable (offline?). Type the snag instead.", "audio-capture": "No microphone found." })[ev.error] || "Voice error: " + ev.error;
     };
     recog.onend = () => {
-      mic.setAttribute("aria-pressed", "false"); mic.setAttribute("aria-label", "Start voice input");
+      setPressed(false);
       recog = null;
       if (finalText.trim()) { status.textContent = "Got it."; SN.input = "voice"; snParse(); }
       else if (status.textContent === "Listening…") status.textContent = "Tap the microphone and speak.";

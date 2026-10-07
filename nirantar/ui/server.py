@@ -42,7 +42,7 @@ class Console:
     """Server-side state: report, ledger and a lazily built simulation context."""
 
     def __init__(self, results_dir: str | Path, plan_kwargs: dict | None = None, store: str | Path | None = None,
-                 auth: "UserStore | None" = None):
+                 auth: "UserStore | None" = None, asr_models: dict | None = None):
         """``store``: a SETU record store. With it the desk, clock and SAARTHI plan from the records
         (world and fleet state estimated, nothing taken from the simulator); without it they use the
         synthetic fleet's hidden truth, as in the demo.
@@ -51,6 +51,8 @@ class Console:
         user's roles, and decisions and snags are signed with the user's own key. Without it (a demo on
         one machine) anyone at the console may act in any role, signed by the console's key."""
         self.auth = auth
+        self.asr_models = dict(asr_models or {})       # language -> Vosk model folder (speech on this node)
+        self._speech = None
         self.dir = Path(results_dir)
         self.store_path = Path(store) if store else None
         if self.store_path and not self.store_path.exists():
@@ -246,6 +248,47 @@ class Console:
                 self._planner.n_shocks = n_shocks
             return self._planner
 
+    # -- speech on this node -------------------------------------------
+    def speech(self):
+        if not self.asr_models:
+            return None
+        ctx = self.sim_context()
+        with self._lock:
+            if self._speech is None:
+                from nirantar.saarthi.asr import SpeechService, domain_phrases
+                from nirantar.saarthi.logbook import Vocabulary
+                self._speech = SpeechService(self.asr_models, domain_phrases(ctx["world"], Vocabulary.from_ipc()))
+            return self._speech
+
+    def speech_info(self) -> dict:
+        try:
+            sp = self.speech()
+        except Exception as exc:                      # a broken model must not take the console down
+            return {"available": False, "error": f"speech model could not be loaded: {exc}"}
+        return sp.info() if sp else {"available": False}
+
+    def transcribe(self, pcm: bytes, lang: str, rate: int, restrict: bool) -> dict:
+        sp = self.speech()
+        if sp is None:
+            raise ValueError("no speech model on this node")
+        if not 8000 <= rate <= 48000 or len(pcm) % 2:
+            raise ValueError("send 16-bit mono PCM at 8-48 kHz")
+        desk = self.desk()
+
+        def filled(text: str) -> int:                     # fields SAARTHI can structure from a transcript
+            f = desk.parse(text)["fields"]
+            return sum(v not in (None, "", "reported") for k, v in f.items() if k != "serial")
+        return sp.transcribe(pcm, lang, rate, restrict, score=filled)
+
+    def logbook(self, body: dict) -> dict:
+        """Structure an English logbook entry (problem, action) and link the part to the parts catalogue."""
+        from dataclasses import asdict
+
+        from nirantar.saarthi.logbook import Vocabulary, extract
+        if not hasattr(self, "_ipc_vocab"):
+            self._ipc_vocab = Vocabulary.from_ipc()
+        return asdict(extract(str(body.get("problem", ""))[:500], str(body.get("action", ""))[:500], self._ipc_vocab))
+
     def saarthi_confirm(self, body: dict, session=None) -> dict:
         desk = self.desk()
         with self._lock:
@@ -306,6 +349,7 @@ class Console:
 
 
 MAX_BODY = 65536
+MAX_AUDIO = 2_000_000              # about 60 s of 16 kHz 16-bit mono
 COOKIE = "nirantar_session"
 CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
        "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
@@ -325,7 +369,7 @@ GET_ROUTES = {
     "/api/plan": ("view", lambda c, s, b: c.planner().view()),
     "/api/clock": ("view", lambda c, s, b: c.clock_view()),
     "/api/source": ("view", lambda c, s, b: c.source()),
-    "/api/saarthi/options": ("view", lambda c, s, b: c.desk().options()),
+    "/api/saarthi/options": ("view", lambda c, s, b: {**c.desk().options(), "asr": c.speech_info()}),
     "/api/saarthi/entries": ("view", lambda c, s, b: {"entries": c.desk().entries[-50:][::-1],
                                                       "stats": c.desk().stats()}),
     "/api/admin/users": ("admin", lambda c, s, b: {"users": c.auth.users()}),
@@ -343,6 +387,7 @@ POST_ROUTES = {
     "/api/saarthi/parse": ("snag", lambda c, s, b: c.desk().parse(b.get("text", ""))),
     "/api/saarthi/check": ("snag", lambda c, s, b: c.desk().check(b.get("fields", {}), b.get("findings"))),
     "/api/saarthi/confirm": ("snag", lambda c, s, b: c.saarthi_confirm(b, s)),
+    "/api/saarthi/logbook": ("snag", lambda c, s, b: c.logbook(b)),
 }
 
 
@@ -442,6 +487,22 @@ def make_handler(console: Console, tls: bool = False):
         def do_POST(self):
             self._guard(self._post)
 
+        def _transcribe(self, n: int):
+            ok, s = self._session()
+            if not ok:
+                return self._json({"error": "please log in"}, 401)
+            if s is not None and not s.can("snag"):
+                return self._json({"error": "your role does not allow this"}, 403)
+            if n > MAX_AUDIO:
+                return self._json({"error": "recording too long (about a minute at most)"}, 413)
+            ctype = self.headers.get("Content-Type", "")
+            if not ctype.startswith("audio/l16"):
+                return self._json({"error": "send audio/l16 (16-bit PCM)"}, 415)
+            rate = int(dict(p.strip().split("=", 1) for p in ctype.split(";")[1:] if "=" in p).get("rate", 16000))
+            q = dict(x.split("=", 1) for x in (urlparse(self.path).query or "").split("&") if "=" in x)
+            return self._json(console.transcribe(self.rfile.read(n), q.get("lang", "en")[:5], rate,
+                                                 q.get("restrict", "1") != "0"))
+
         def _post(self):
             path = urlparse(self.path).path
             # cross-site request forgery: a custom header (needs a CORS preflight we never grant) and same origin
@@ -451,6 +512,8 @@ def make_handler(console: Console, tls: bool = False):
             if origin and urlparse(origin).netloc != self.headers.get("Host"):
                 return self._json({"error": "cross-origin request refused"}, 403)
             n = int(self.headers.get("Content-Length", "0"))
+            if path == "/api/saarthi/transcribe":           # raw audio, not JSON
+                return self._transcribe(n)
             if n > MAX_BODY:
                 return self._json({"error": "request too large"}, 413)
             body = json.loads(self.rfile.read(n) or b"{}")
@@ -485,7 +548,7 @@ def _loopback(host: str) -> bool:
 
 def serve(results_dir: str = "experiments/results", host: str = "127.0.0.1", port: int = 8050,
           store: str | None = None, auth_db: str | None = None, cert: str | None = None, key: str | None = None,
-          allow_insecure: bool = False) -> None:
+          allow_insecure: bool = False, asr_models: dict | None = None) -> None:
     """Demo on this machine (no logins), or a multi-user node: ``auth_db`` for logins and roles,
     ``cert``/``key`` for HTTPS. Listening beyond this machine needs both, unless ``allow_insecure``."""
     if not _loopback(host) and not allow_insecure and not (auth_db and cert and key):
@@ -497,7 +560,7 @@ def serve(results_dir: str = "experiments/results", host: str = "127.0.0.1", por
         auth = UserStore(auth_db)
         if not auth.users():
             raise SystemExit(f"no user accounts in {auth_db}: add one with `python -m nirantar users add`")
-    console = Console(results_dir, store=store, auth=auth)
+    console = Console(results_dir, store=store, auth=auth, asr_models=asr_models)
     httpd = ThreadingHTTPServer((host, port), make_handler(console, tls=bool(cert)))
     if cert:
         import ssl
@@ -508,7 +571,8 @@ def serve(results_dir: str = "experiments/results", host: str = "127.0.0.1", por
     scheme = "https" if cert else "http"
     print(f"NIRANTAR console on {scheme}://{host}:{port}  (Ctrl+C to stop)"
           + (f"  planning from records in {store}" if store else "")
-          + ("  logins required" if auth else "  demo mode: no logins"))
+          + ("  logins required" if auth else "  demo mode: no logins")
+          + (f"  speech on this node: {', '.join(asr_models)}" if asr_models else ""))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

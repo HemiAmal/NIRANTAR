@@ -1,0 +1,1 @@
+vosk_digits.wav: real speech sample from the Vosk API repository (github.com/alphacep/vosk-api, python/example/test.wav), Apache License 2.0. Said: "one zero zero zero one nine oh two one oh zero one eight zero three".

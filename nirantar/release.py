@@ -37,10 +37,12 @@ Set-Location $PSScriptRoot
 if ($LASTEXITCODE -ne 0) { throw "bundle check failed: do not install" }
 if ($User) {
   & $Python -m pip install --user --no-index --find-links wheels nirantar
+  & $Python -m pip install --user --no-index --no-deps --find-links wheels vosk
   Write-Host "Installed for this user. Run:  $Python -m nirantar selftest"
 } else {
   & $Python -m venv nirantar-env
   & .\nirantar-env\Scripts\python.exe -m pip install --no-index --find-links wheels nirantar
+  & .\nirantar-env\Scripts\python.exe -m pip install --no-index --no-deps --find-links wheels vosk
   Write-Host "Installed. Run:  .\nirantar-env\Scripts\python.exe -m nirantar selftest"
 }
 '''
@@ -53,6 +55,7 @@ PY="${1:-python3}"
 "$PY" install_check.py
 "$PY" -m venv nirantar-env
 ./nirantar-env/bin/python -m pip install --no-index --find-links wheels nirantar
+./nirantar-env/bin/python -m pip install --no-index --no-deps --find-links wheels vosk
 echo "Installed. Run:  ./nirantar-env/bin/python -m nirantar selftest"
 '''
 
@@ -97,6 +100,9 @@ SHA256SUMS (every file's SHA-256) and SHA256SUMS.sig (release signature).
      python -m nirantar verify-bundle <this folder>
      python -m nirantar selftest
 4. Accounts, certificate and console: see docs/12_PRODUCTION_DEPLOYMENT.md.
+5. Voice input: models/ holds the speech models included (if any); serve with
+     --asr-model en=models/<model folder>
+   (docs/13_SAARTHI_FIELD.md).
 
 Python: the bundle was built for {targets}.
 """
@@ -107,7 +113,7 @@ def _sha(p: Path) -> str:
 
 
 def build_bundle(out: str | Path, targets: list[str], project: str | Path = ".", key: str | Path | None = None,
-                 log=print) -> Path:
+                 log=print, speech_models: list[str] | None = None) -> Path:
     """``targets``: 'platform:python', e.g. 'win_amd64:3.14', 'manylinux2014_x86_64:3.11'."""
     out = Path(out)
     if out.exists():
@@ -123,6 +129,14 @@ def build_bundle(out: str | Path, targets: list[str], project: str | Path = ".",
         subprocess.run([sys.executable, "-m", "pip", "download", "-q", "--only-binary=:all:", "--platform", plat,
                         "--python-version", py, "--implementation", "cp", "-d", str(wheels), *DEPENDENCIES],
                        check=True)
+        # speech engine for SAARTHI voice input: its native library only (no subtitle/download extras)
+        subprocess.run([sys.executable, "-m", "pip", "download", "-q", "--only-binary=:all:", "--no-deps", "--platform",
+                        plat, "--python-version", py, "--implementation", "cp", "-d", str(wheels), "vosk"], check=True)
+    for m in speech_models or []:                   # model folders the unit obtained from a verified source
+        src = Path(m)
+        log(f"adding speech model {src.name} ...")
+        import shutil
+        shutil.copytree(src, out / "models" / src.name)
     seal(out, targets, key or Path(project) / "experiments/results/keys/release.key", log)
     return out
 
@@ -237,9 +251,17 @@ def selftest(log=print) -> bool:
             ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER).load_cert_chain(c, k)
         return "certificate and TLS"
 
+    def speech():
+        import importlib.util
+        if importlib.util.find_spec("vosk") is None:
+            return "not installed (voice input off; typing works)"
+        from nirantar.saarthi.asr import _Lib
+        _Lib.get()
+        return "Vosk library loads"
+
     for name, fn in (("dependencies", deps), ("digital twin", twin), ("reliability fit", fit),
                      ("evidence ledger", ledger), ("record store", store), ("user accounts", accounts),
-                     ("HTTPS", tls)):
+                     ("HTTPS", tls), ("speech engine", speech)):
         check(name, fn)
     ok = all(c[1] for c in checks)
     log("SELFTEST " + ("PASSED" if ok else "FAILED"))
