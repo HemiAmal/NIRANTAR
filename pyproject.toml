@@ -20,6 +20,7 @@ include = ["nirantar*"]
 "nirantar.ui" = ["static/*"]
 "nirantar.setu" = ["mappings/*.json"]
 "nirantar.pariksha" = ["datasets/*"]
+"nirantar.saarthi" = ["data/lycoming/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
