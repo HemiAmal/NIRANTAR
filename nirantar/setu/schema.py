@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 SCHEMA_VERSION = 2
@@ -215,19 +216,22 @@ def _attach_prior_repairs(spells: pd.DataFrame, rep: pd.DataFrame) -> pd.DataFra
     if spells.empty:
         spells["prev_agency"], spells["n_prior_repairs"] = [], []
         return spells
-    done = rep.dropna(subset=["done_day"]).sort_values("done_day")
-    prev, n_prior = [], []
-    by_serial = {s: g for s, g in done.groupby("serial")}
-    for s, t in zip(spells["serial"], spells["install_day"]):
-        g = by_serial.get(s)
-        if g is None:
-            prev.append("UNKNOWN"); n_prior.append(0); continue
-        before = g[g["done_day"] <= t + 1e-6]
-        if before.empty:
-            prev.append("UNKNOWN"); n_prior.append(0); continue
-        last = before.iloc[-1]
-        prev.append(last["agency"] + ("#OH" if bool(last["overhaul"]) else ""))
-        n_prior.append(len(before))
+    # for each installation: the unit's latest repair finished by then, and how many it had (one as-of join)
+    done = rep.dropna(subset=["done_day"]).sort_values(["serial", "done_day"], kind="stable")
+    done = done.assign(_n=done.groupby("serial").cumcount() + 1,
+                       _prev=done["agency"] + np.where(done["overhaul"].astype(bool), "#OH", ""))
+    left = pd.DataFrame({"serial": spells["serial"].to_numpy(), "_t": spells["install_day"].to_numpy(float) + 1e-6,
+                         "_row": np.arange(len(spells))})
+    ok = left["_t"].notna()
+    m = pd.merge_asof(left[ok].sort_values("_t", kind="stable"),
+                      done[["serial", "done_day", "_n", "_prev"]].sort_values("done_day", kind="stable"),
+                      left_on="_t", right_on="done_day", by="serial", direction="backward")
+    prev = np.full(len(spells), "UNKNOWN", dtype=object)
+    n_prior = np.zeros(len(spells), dtype=int)
+    hit = m["_n"].notna().to_numpy()
+    rows = m["_row"].to_numpy()[hit]
+    prev[rows] = m["_prev"].to_numpy()[hit]
+    n_prior[rows] = m["_n"].to_numpy()[hit].astype(int)
     spells = spells.copy()
-    spells["prev_agency"], spells["n_prior_repairs"] = prev, n_prior
+    spells["prev_agency"], spells["n_prior_repairs"] = list(prev), list(n_prior)
     return spells
