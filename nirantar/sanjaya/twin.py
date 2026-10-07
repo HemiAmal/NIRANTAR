@@ -17,6 +17,7 @@ import math
 import zlib
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Optional, Protocol
 
 import numpy as np
@@ -35,6 +36,27 @@ def _key(x) -> int:
 def krng(*keys) -> np.random.Generator:
     """A generator determined only by its keys (common random numbers)."""
     return np.random.default_rng(np.random.SeedSequence([_key(k) for k in keys]))
+
+
+# The same keys recur across every candidate priced on the same futures, so the first draw of each keyed
+# generator is cached (exactly the value krng(*keys) would give; uniform and normal are transforms of it).
+@lru_cache(maxsize=1 << 19)
+def first_uniform(keys: tuple) -> float:
+    return float(krng(*keys).random())
+
+
+@lru_cache(maxsize=1 << 19)
+def first_normal(keys: tuple) -> float:
+    return float(krng(*keys).standard_normal())
+
+
+def _frailties(w: World) -> np.ndarray:
+    """Each unit's frailty as an array, built once per world object (thousands of runs share it)."""
+    z = w.__dict__.get("_frailty_array")
+    if z is None or len(z) != len(w.serials):
+        z = np.array([s.frailty for s in w.serials], dtype=float)
+        w.__dict__["_frailty_array"] = z
+    return z
 
 
 # ---------------------------------------------------------------- inputs
@@ -226,7 +248,7 @@ class Twin:
         n = len(w.serials)
         self.V = np.zeros(n)                       # true virtual age
         self.X = np.zeros(n)                       # FH since last repair
-        self.z = np.array([s.frailty for s in w.serials], dtype=float)
+        self.z = _frailties(w).copy()
         self.hist: dict[int, list[tuple[str, float]]] = defaultdict(list)   # (agency, X) per repair
         self.install_count = np.zeros(n, dtype=int)
         self.repair_count = np.zeros(n, dtype=int)
@@ -245,7 +267,8 @@ class Twin:
             ft = w.fleets[t["fleet"]]
             slots = [(p.pn, k) for p in w.pns.values() if p.fleet == t["fleet"] for k in range(p.positions)]
             self.tails.append({
-                "idx": i, "id": t["id"], "fleet": t["fleet"], "base": t["base"],
+                "idx": i, "key": t.get("key", i),     # key: random streams (same as in the full fleet for a sub-fleet)
+                "id": t["id"], "fleet": t["fleet"], "base": t["base"],
                 "env": w.base_env(t["base"]), "rate": ft.fh_per_day, "ft": ft,
                 "slots": slots, "inst": {}, "rem": {}, "since_insp": 0.0,
                 "work_until": 0.0, "last_t": 0.0, "flying": False, "ver": 0,
@@ -267,7 +290,7 @@ class Twin:
             for key, sids in w.initial_stock.items():
                 self.stock[key] = list(sids)
             for tail in self.tails:
-                tail["since_insp"] = float(krng(self.seed, "insp0", tail["idx"]).uniform(0, tail["ft"].inspection_interval_fh))
+                tail["since_insp"] = float(krng(self.seed, "insp0", tail["key"]).uniform(0, tail["ft"].inspection_interval_fh))
         else:
             self._load_snapshot(start)
         waited: dict[tuple[str, tuple], float] = {}
@@ -419,7 +442,7 @@ class Twin:
         A = self.V[sid] + self.X[sid]
         n = tail["n_inst"].get(slot, 0)
         tail["n_inst"][slot] = n + 1
-        u = krng(self.seed, "life", tail["idx"], slot[0], slot[1], n).random()
+        u = first_uniform((self.seed, "life", tail["key"], slot[0], slot[1], n))
         self.install_count[sid] += 1
         total = eta * ((A / eta) ** p.beta + (-math.log(max(u, 1e-300))) / self.z[sid]) ** (1.0 / p.beta)
         return max(total - A, 1e-6)
@@ -502,8 +525,8 @@ class Twin:
         names = list(modes)
         p = np.array([modes[m] for m in names])
         p = p / p.sum()
-        g = krng(self.seed, "mode", tail["idx"], slot[0], slot[1], tail["n_inst"].get(slot, 0))
-        mode = names[int(np.searchsorted(np.cumsum(p), g.random()))]
+        u = first_uniform((self.seed, "mode", tail["key"], slot[0], slot[1], tail["n_inst"].get(slot, 0)))
+        mode = names[int(np.searchsorted(np.cumsum(p), u))]
         self.snags.append({
             "day": self.t, "tail": tail["id"], "fleet": tail["fleet"], "base": tail["base"],
             "env": tail["env"], "pn": pn, "family": fam, "serial": sid, "mode": mode,
@@ -731,8 +754,8 @@ class Twin:
             job = self._pick_job(g)
             self.busy[g] += 1
             sid = job["sid"]
-            r = krng(self.seed, "tat", sid, self.repair_count[sid], g)
-            tat = ag.tat_median_days * float(np.exp(r.normal(0.0, ag.tat_sigma)))
+            z = first_normal((self.seed, "tat", sid, int(self.repair_count[sid]), g))
+            tat = ag.tat_median_days * float(np.exp(0.0 + ag.tat_sigma * z))
             if job["deep"] or job.get("overhaul"):
                 tat *= 1.5
             if sid in self.expedited:
