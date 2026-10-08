@@ -22,6 +22,8 @@ def main() -> None:
                     help="require logins (user accounts from `nirantar users`), e.g. experiments/results/users.db")
     sv.add_argument("--cert", default=None, help="TLS certificate (PEM) for HTTPS")
     sv.add_argument("--key", default=None, help="TLS private key (PEM)")
+    sv.add_argument("--asr-model", action="append", default=None, metavar="LANG=FOLDER",
+                    help="Vosk speech model for voice snags on this node, e.g. en=models/vosk-model-small-en-in-0.4")
     sv.add_argument("--allow-insecure", action="store_true",
                     help="allow listening beyond this machine without logins and HTTPS (isolated test networks only)")
     us = sub.add_parser("users", help="manage console user accounts (roles, passphrases, disabling)")
@@ -48,6 +50,7 @@ def main() -> None:
     bd.add_argument("--out", default="dist/offline")
     bd.add_argument("--target", action="append", default=None, help="platform:python, e.g. win_amd64:3.14")
     bd.add_argument("--key", default=None, help="release signing key (default experiments/results/keys/release.key)")
+    bd.add_argument("--speech-model", action="append", default=None, help="Vosk model folder to include (verified)")
     vb = sub.add_parser("verify-bundle", help="check an offline bundle's hashes and release signature")
     vb.add_argument("folder")
     vb.add_argument("--trusted-key", default=None, help="the release public key you were given")
@@ -77,6 +80,17 @@ def main() -> None:
     rf.add_argument("--holdout-days", type=float, default=365.0)
     vp = sub.add_parser("validate-public", help="check DHANVANTARI on real public reliability data")
     vp.add_argument("--out", default="experiments/results")
+    lb = sub.add_parser("logbook-eval", help="score SAARTHI's logbook extractor on 6,169 real maintenance entries")
+    lb.add_argument("--out", default="experiments/results")
+    at = sub.add_parser("asr-trial", help="word error rate of on-node speech recognition on field recordings")
+    at.add_argument("audio", help="folder of NAME.wav (16-bit mono) and NAME.txt (what was said)")
+    at.add_argument("--asr-model", required=True, metavar="LANG=FOLDER")
+    at.add_argument("--out", default="experiments/results")
+    sb = sub.add_parser("scale-bench", help="time every stage on a larger synthetic fleet (S, M, L, XL)")
+    sb.add_argument("--size", default="M", choices=["S", "M", "L", "XL"])
+    sb.add_argument("--no-plan", action="store_true")
+    sb.add_argument("--workers", type=int, default=None)
+    sb.add_argument("--out", default="experiments/results")
     ev = sub.add_parser("saarthi-eval", help="score the SAARTHI snag extractor on synthetic utterances")
     ev.add_argument("--n", type=int, default=900)
     ev.add_argument("--seed", type=int, default=0)
@@ -155,7 +169,8 @@ def main() -> None:
         return
     if args.cmd == "bundle":
         from nirantar.release import build_bundle
-        build_bundle(args.out, args.target or ["win_amd64:3.14", "manylinux2014_x86_64:3.11"], key=args.key)
+        build_bundle(args.out, args.target or ["win_amd64:3.14", "manylinux2014_x86_64:3.11"], key=args.key,
+                     speech_models=args.speech_model)
         return
     if args.cmd == "verify-bundle":
         import json
@@ -199,6 +214,46 @@ def main() -> None:
         (Path(args.out) / "public_validation.json").write_text(json.dumps(clean_json(r), indent=1), encoding="utf-8")
         print(f"-> {Path(args.out) / 'public_validation.json'}")
         return
+    if args.cmd == "logbook-eval":
+        import json
+        from pathlib import Path
+
+        from nirantar.saarthi.logbook_eval import evaluate
+        r = {"test": evaluate(split="test"), "dev": evaluate(split="dev")}
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        (Path(args.out) / "logbook_eval.json").write_text(json.dumps(r, indent=1, default=str), encoding="utf-8")
+        t = r["test"]
+        print(f"{t['test_entries']} held-out entries: part {t['part_exact']['agree']:.0%} exact "
+              f"({t['part_same_head_noun']['agree']:.0%} same part noun), problem {t['problem']['agree']:.0%}, "
+              f"cylinders {t['cylinders']['agree']:.0%}, engine {t['engine_side']['agree']:.0%}, "
+              f"action {t['action']['agree']:.0%} agreement with the GPT-4o reference")
+        return
+    if args.cmd == "asr-trial":
+        import json
+        from pathlib import Path
+
+        from nirantar.bharat_fleet.world import make_world
+        from nirantar.saarthi.asr import SpeechService, domain_phrases, field_trial
+        from nirantar.saarthi.logbook import Vocabulary
+        lang, folder = args.asr_model.split("=", 1) if "=" in args.asr_model else ("en", args.asr_model)
+        sp = SpeechService({lang: folder}, domain_phrases(make_world(seed=7), Vocabulary.from_ipc()))
+        r = field_trial(sp, args.audio, lang)
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        (Path(args.out) / "asr_trial.json").write_text(json.dumps(r, indent=1), encoding="utf-8")
+        print(f"{r['files']} recordings: word error rate {r['free']['wer']} free, {r['restricted']['wer']} "
+              f"within SAARTHI's vocabulary")
+        return
+    if args.cmd == "scale-bench":
+        import json
+        from pathlib import Path
+
+        from nirantar.scale_bench import run as bench
+        r = bench(args.size, plan=not args.no_plan, workers=args.workers)
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        f = Path(args.out) / f"scale_bench_{args.size}.json"
+        f.write_text(json.dumps(r, indent=1), encoding="utf-8")
+        print(json.dumps(r, indent=1))
+        return
     if args.cmd == "saarthi-eval":
         import json
         from pathlib import Path
@@ -215,7 +270,8 @@ def main() -> None:
     if args.cmd == "serve":
         from nirantar.ui.server import serve
         serve(args.results, args.host, args.port, store=args.db, auth_db=args.auth, cert=args.cert, key=args.key,
-              allow_insecure=args.allow_insecure)
+              allow_insecure=args.allow_insecure,
+              asr_models=dict(m.split("=", 1) if "=" in m else ("en", m) for m in (args.asr_model or [])))
         return
     cfg = Config(out_dir=args.out, quick=args.quick)
     if args.seeds:

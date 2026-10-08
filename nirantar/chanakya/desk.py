@@ -35,6 +35,7 @@ from nirantar.bharat_fleet.world import World
 from nirantar.chanakya.mrv import surrogate_provision_values, trace_diff
 from nirantar.sanjaya.twin import (EXPEDITE_LEG_DAYS, EXPEDITE_TAT_FACTOR, LATERAL_DAYS, Action, DecisionModel,
                                    Policy, Scenario, Twin)
+from nirantar.sanjaya.views import fleet_view
 from nirantar.satya.quality import evidence_grade
 
 TRANSFER_COST_LAKH = 0.5
@@ -319,11 +320,18 @@ def _init_worker(ctx: dict) -> None:
 
 
 def _run_job(job: tuple) -> tuple:
-    """One twin run in a worker: (actions, seed) -> compact result."""
-    actions, seed = job
+    """One twin run in a worker: (actions, seed) on the whole fleet, or (view, actions, seed) on a sub-fleet."""
+    view, actions, seed = job if len(job) == 3 else (None, *job)
     c = _CTX
-    r = Twin(c["world"], c["policy"], c["horizon"], seed=seed, actions=actions, decision_model=c["dm"],
-             start=c["start"], resume=True, scenario=c["scenario"]).run()
+    if view is None:
+        world, start = c["world"], c["start"]
+    else:                                   # (fleet, bases or None): built once per worker, then reused
+        cache = c.setdefault("_views", {})
+        if view not in cache:
+            cache[view] = fleet_view(c["world"], c["start"], [view[0]], view[1])
+        world, start = cache[view]
+    r = Twin(world, c["policy"], c["horizon"], seed=seed, actions=actions, decision_model=c["dm"],
+             start=start, resume=True, scenario=c["scenario"]).run()
     return r.waad, r.overall_availability, r.nmcs_days, dict(r.nmcs_by_tail)
 
 
@@ -387,38 +395,86 @@ def _price(base: list[_Res], runs: list[_Res]) -> dict:
 def build_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, n_fail: dict[str, int],
                dq: dict[str, float], horizon: int = 90, n_seeds: int = 24, n_screen: int = 8,
                budget_lakh: float = 50.0, delay_days: float = 7.0, seed0: int = 7000, workers: int | None = None,
-               scenario: Scenario = Scenario(), log=lambda *_: None, progress=lambda *_: None) -> dict:
+               scenario: Scenario = Scenario(), log=lambda *_: None, progress=lambda *_: None,
+               decompose: bool | str = "auto", prune: bool | str = "auto", refine_margin: int = 5) -> dict:
+    """``decompose``: price each action on a twin of just the aircraft it can affect: its base (or the two bases
+    of a transfer) under procedures where bases do not interact, else its aircraft type. Exact while repair
+    depots are not saturated, and the chosen plan is verified on the whole fleet at the end. ``prune``: refine only actions within ``refine_margin`` of the
+    best for some waiting aircraft. "auto" does both for fleets of 150 aircraft or more."""
     t0 = time.time()
     brd = board(world, start, dm, scenario=scenario)
     cands = candidates(world, start, dm, brd, horizon, scenario)
     log(f"  {len(cands)} candidate actions")
     seeds = list(range(seed0, seed0 + n_seeds))
+    large = len(world.tails) >= 150
+    if decompose == "auto":
+        decompose = len(world.fleets) > 1 and large
+    if prune == "auto":
+        prune = large
+    # where an action is priced: its base (or the two bases of a transfer) when bases do not interact under the
+    # policy (repaired units return to the sender, no lending), else its aircraft type, else the whole fleet
+    by_base = decompose and not (policy.lateral_transfer or policy.need_based_return)
+
+    def view_of(a: Action):
+        if not decompose:
+            return None
+        f = world.pns[a.pn].fleet
+        if by_base and a.kind in ("cann", "expedite", "priority", "provision") and a.base:
+            return (f, (a.base,))
+        if by_base and a.kind == "transfer" and a.base and a.src:
+            return (f, tuple(sorted({a.base, a.src})))
+        return (f, None)
+
     runner = Runner(world, policy, horizon, start, dm, workers, scenario)
     try:
         progress(0, 4, "baseline futures")
-        base = runner.run([((), s) for s in seeds])
+        keys = [None] + sorted({view_of(c.action) for c in cands} - {None}, key=str)
+        res = runner.run([(k, (), s) for k in keys for s in seeds])
+        base_of = {k: res[i * n_seeds:(i + 1) * n_seeds] for i, k in enumerate(keys)}
+        base = base_of[None]
         base_av = float(np.mean([r.overall_availability for r in base]))
         # 1) screen every candidate on the first futures
         progress(1, 4, f"screening {len(cands)} actions")
-        jobs = [((c.action,), s) for c in cands for s in seeds[:n_screen]]
+        jobs = [(view_of(c.action), (c.action,), s) for c in cands for s in seeds[:n_screen]]
         res = runner.run(jobs)
         promising = []
         for i, c in enumerate(cands):
             runs = res[i * n_screen:(i + 1) * n_screen]
-            c.priced = _price(base[:n_screen], runs)
+            c.priced = _price(base_of[view_of(c.action)][:n_screen], runs)
             c.priced["grade"] = _grade(c.action.pn, n_fail, dq).grade
             if c.priced["mrv"] > 0 and c.priced["p_positive"] >= 0.5:
                 promising.append((c, runs))
             else:
                 c.priced["screened_out"] = True
+        # an action can only be chosen if it is among the best for some aircraft it would return to service:
+        # refine those (with a margin) and leave the rest as screened, which matters at fleet scale
+        if prune:
+            holes = defaultdict(int)
+            for k, hs in brd["holes"].items():
+                b, pn = k.split("|")
+                holes[("hole", b, pn)] = len(hs)
+            by_fix = defaultdict(list)
+            for c, _ in promising:
+                for f in c.fixes:
+                    by_fix[f].append(c)
+            keep = set()
+            for f, cs in by_fix.items():
+                cs.sort(key=lambda c: -c.priced["mrv"])
+                keep.update(id(c) for c in cs[:holes.get(f, 1) + refine_margin])
+            dropped = [(c, r) for c, r in promising if c.fixes and id(c) not in keep]
+            for c, _ in dropped:
+                c.priced["screened_out"] = True
+                c.priced["outranked"] = True
+            promising = [(c, r) for c, r in promising if not c.fixes or id(c) in keep]
+            log(f"  {len(promising)} to refine ({len(dropped)} outranked for the same aircraft)")
         # 2) refine the promising ones on the remaining futures (same streams: paired)
         progress(2, 4, f"refining {len(promising)} actions")
         rest = seeds[n_screen:]
-        res = runner.run([((c.action,), s) for c, _ in promising for s in rest])
+        res = runner.run([(view_of(c.action), (c.action,), s) for c, _ in promising for s in rest])
         for i, (c, first) in enumerate(promising):
             runs = first + res[i * len(rest):(i + 1) * len(rest)]
             grade = c.priced["grade"]
-            c.priced = _price(base, runs)
+            c.priced = _price(base_of[view_of(c.action)], runs)
             c.priced["grade"] = grade
         n_refined = len(promising)
         # select: certain value, allowed evidence, resource conflicts, budget
@@ -436,6 +492,8 @@ def build_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, n_f
             why = None
             if pr["grade"] in ("E4", "E5"):
                 why = f"evidence {pr['grade']}: not recommended"
+            elif pr.get("outranked"):
+                why = "screened out: better actions exist for the same aircraft"
             elif pr.get("screened_out"):
                 why = "screened out: no gain on the first futures"
             elif pr["ci95"][0] <= 0:
@@ -466,7 +524,8 @@ def build_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, n_f
         if chosen:
             acts = tuple(c.action for c in chosen)
             delayed = [(Action(**{**c.action.__dict__, "start_day": c.action.start_day + delay_days}),) for c in chosen]
-            res = runner.run([(acts, s) for s in seeds] + [(d, s) for d in delayed for s in seeds])
+            res = runner.run([(None, acts, s) for s in seeds]                       # the whole plan, whole fleet
+                             + [(view_of(d[0]), d, s) for d in delayed for s in seeds])
             runs, rest = res[:n_seeds], res[n_seeds:]
             pj = _price(base, runs)
             joint = {"mrv": pj["mrv"], "ci95": pj["ci95"], "p_positive": pj["p_positive"],
@@ -476,7 +535,7 @@ def build_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, n_f
                      "nmcs_days_saved": round(float(np.mean([b.nmcs_days - a.nmcs_days
                                                              for a, b in zip(runs, base)])), 1)}
             for i, c in enumerate(chosen):
-                later = _price(base, rest[i * n_seeds:(i + 1) * n_seeds])
+                later = _price(base_of[view_of(c.action)], rest[i * n_seeds:(i + 1) * n_seeds])
                 c.priced["cod_per_day"] = round((c.priced["mrv"] - later["mrv"]) / delay_days, 2)
     finally:
         runner.close()
@@ -491,7 +550,7 @@ def build_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, n_f
              "reason": c.reason, "pn": a.pn, "part": world.pns[a.pn].name, "base": a.base,
              "fleet": world.pns[a.pn].fleet, "src": a.src, "tail": a.tail, "serial": a.serial,
              "agency": a.agency, "cost_lakh": a.cost_lakh, "authority": auth,
-             **{k: v for k, v in pr.items() if k != "screened_out"}}
+             **{k: v for k, v in pr.items() if k not in ("screened_out", "outranked")}}
         if why:
             d["not_selected"] = why
         return d
@@ -504,7 +563,7 @@ def build_plan(world: World, start: dict, dm: DecisionModel, policy: Policy, n_f
         "joint": joint, "cost_lakh": round(spent, 2), "n_candidates": len(cands), "n_refined": n_refined,
         "scenario": [list(f) for f in scenario.forced],
         "screen_seeds": n_screen,
-        "board": brd, "runtime_s": round(time.time() - t0, 1),
+        "board": brd, "runtime_s": round(time.time() - t0, 1), "priced_by_fleet": bool(decompose),
     }
 
 

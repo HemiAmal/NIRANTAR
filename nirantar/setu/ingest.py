@@ -21,6 +21,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ from nirantar.satya.quality import check_spells
 from nirantar.setu.schema import EVENT_TABLES, MASTER_TABLES, TIME_FMT, Store
 
 DEFAULT_MAPPING = Path(__file__).parent / "mappings" / "default.json"
+_CANONICAL = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
 
 REQUIRED = {
     "bases": ("base", "env"),
@@ -128,10 +130,18 @@ class Importer:
             if row[f] is None:
                 continue
             try:
-                row[f] = datetime.strptime(row[f], self.time_format).strftime(TIME_FMT)
+                row[f] = self._time(row[f])
             except ValueError:
                 raise RowError("BAD_TIME", f"{f}={row[f]!r}") from None
         return row
+
+    def _time(self, v: str) -> str:
+        """Source time -> canonical text. Already canonical (the common case) is checked without strptime,
+        which dominates large imports; anything else goes through the mapping's format."""
+        if self.time_format == TIME_FMT and _CANONICAL.fullmatch(v):
+            datetime(int(v[:4]), int(v[5:7]), int(v[8:10]), int(v[11:13]), int(v[14:16]))   # raises if invalid
+            return v
+        return datetime.strptime(v, self.time_format).strftime(TIME_FMT)
 
     def _check(self, table: str, row: dict, refs: dict) -> None:
         if table == "aircraft":
@@ -223,8 +233,16 @@ class Importer:
                               (spec.get("system", "unknown"), rel, sha, datetime.now().strftime(TIME_FMT),
                                rep.rows, len(good), len(bad)))
             batch = cur.lastrowid
-            for row in good:
-                _insert(con, table, row, batch)
+            if table in MASTER_TABLES:
+                for row in good:
+                    _insert(con, table, row, batch)
+            else:                                       # event rows: one statement per column set
+                groups: dict[tuple, list] = {}
+                for row in good:
+                    groups.setdefault(tuple(row), []).append([batch] + [row[c] for c in row])
+                for cols, rows in groups.items():
+                    con.executemany(f"INSERT INTO {table}(batch,{','.join(cols)}) "
+                                    f"VALUES ({','.join('?' * (len(cols) + 1))})", rows)
             con.executemany("INSERT INTO quarantine(batch, row_no, target, issue, detail, raw) VALUES (?,?,?,?,?,?)",
                             [(batch, i, table, issue, detail, json.dumps(raw)) for i, issue, detail, raw in bad])
         rep.accepted, rep.quarantined, rep.batch = len(good), len(bad), batch

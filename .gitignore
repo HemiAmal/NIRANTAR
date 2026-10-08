@@ -17,5 +17,5 @@ experiments/results/live/
 experiments/results/records/
 
 # local record stores and generated exports
-data/
+/data/
 *.db

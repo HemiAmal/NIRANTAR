@@ -21,12 +21,14 @@ A sovereign decision platform for military aircraft predictive maintenance and f
 | 10 | [Data foundation: planning from records](docs/10_DATA_FOUNDATION.md) | Import e-MMS/IMMOLS-style records with checks and quarantine; estimate the world, today's fleet state and the supply regime from records alone; run the console on them; back-test plans from records against the hidden truth |
 | 11 | [Validation on real public data, and refitting](docs/11_REAL_DATA_VALIDATION.md) | DHANVANTARI on real field records (fans, 52k hard drives, engine valve seats, braking-grid batches) scored out of sample; per-part wear-out shape added; `refit` back-tests, chooses, flags drift and signs a model card |
 | 12 | [Production deployment](docs/12_PRODUCTION_DEPLOYMENT.md) | Sign-in and server-enforced roles, each person's own signing key, HTTPS, storage safe for several writers, signed and verified backups, and installation without internet from a signed bundle |
+| 13 | [SAARTHI field readiness](docs/13_SAARTHI_FIELD.md) | Real logbook English (6,169 entries, held-out evaluation and adjudication), the illustrated parts catalogue as vocabulary with part-number links, NATO-alphabet tail numbers, speech recognised on the node, and the field-trial protocol |
+| 14 | [Scale](docs/14_SCALE.md) | Synthetic fleets up to 1,692 aircraft, 6 types, 24 bases and 107,000 units; actions priced on the bases they affect (exact), cached random draws, pruned refinement; the full record-to-plan path timed at each size |
 
 ## Development
 
 ```bash
 python -m pip install -e ".[dev]"  # numpy, scipy, pandas, cryptography, pytest
-python -m pytest -q                # 124 tests
+python -m pytest -q                # 140 tests (1 needs a speech model)
 python -m nirantar demo --quick    # ~15 s end-to-end run
 python -m nirantar demo            # full run -> experiments/results/milestone1_report.md
 python -m nirantar serve           # web console -> http://127.0.0.1:8050
@@ -43,6 +45,10 @@ python -m nirantar serve --auth experiments/results/users.db --cert C --key K --
 python -m nirantar backup --db data/nirantar.db --users experiments/results/users.db
 python -m nirantar bundle --out dist/offline   # offline install bundle (docs/12)
 python -m nirantar selftest          # acceptance check on a fresh node
+python -m nirantar logbook-eval      # SAARTHI on 6,169 real maintenance logbook entries
+python -m nirantar serve --asr-model en=MODEL_FOLDER   # voice snags recognised on the node (docs/13)
+python -m nirantar asr-trial FOLDER --asr-model en=MODEL_FOLDER   # word error rate on field recordings
+python -m nirantar scale-bench --size XL   # records-to-plan timings on a 1,692-aircraft fleet (docs/14)
 ```
 
 On Windows machines where an Application Control policy blocks `pip.exe` or `pytest.exe`, use the `python -m ...` forms above; they run through `python.exe`.
